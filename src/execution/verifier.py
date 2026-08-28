@@ -24,6 +24,9 @@ class VerificationResult(BaseModel):
     rule_id: Optional[str] = None
     reason: str
     is_verified_recovery: bool
+    state_result: Optional[Any] = None
+    recovered_amount: Optional[float] = None
+    outstanding_amount: Optional[float] = None
 
 
 class RecoveryVerifier:
@@ -68,7 +71,11 @@ class RecoveryVerifier:
             rule_id=state_eval.rule_id,
             reason=state_eval.reason,
             is_verified_recovery=is_recovered,
+            state_result=state_eval,
+            recovered_amount=state_eval.recovered_amount,
+            outstanding_amount=state_eval.outstanding_amount,
         )
+
 
     def verify_post_action(
         self,

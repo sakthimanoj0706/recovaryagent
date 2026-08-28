@@ -152,12 +152,30 @@ def determine_final_outcome(
     if verification is not None:
         v_state = verification.verified_financial_state.upper()
         if v_state == "ALREADY_RECOVERED":
+            rec_amt = (
+                verification.recovered_amount
+                if (verification.recovered_amount is not None)
+                else (
+                    verification.state_result.recovered_amount
+                    if (verification.state_result and getattr(verification.state_result, "recovered_amount", None) is not None)
+                    else amount
+                )
+            )
+            out_amt = max(0.0, amount - rec_amt)
+            if out_amt > 0.01:
+                return (
+                    FinalOutcome.RECOVERY_SUCCESS.value,
+                    rec_amt,
+                    out_amt,
+                    f"Financial State Engine confirmed partial capture: Rs. {rec_amt:,.2f} recovered of Rs. {amount:,.2f}.",
+                )
             return (
                 FinalOutcome.RECOVERY_SUCCESS.value,
                 amount,
                 0.0,
                 f"Financial State Engine confirmed payment captured. Rs. {amount:,.2f} successfully recovered.",
             )
+
         elif v_state == "UNCERTAIN":
             return (
                 FinalOutcome.RECOVERY_WAITING_ASYNC.value,

@@ -92,6 +92,10 @@ class StateEvaluationResult(BaseModel):
     evaluated_at: str
     rule_id: str
 
+    recovered_amount: Optional[float] = None
+    outstanding_amount: Optional[float] = None
+    is_partial: bool = False
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert result to dictionary representation."""
         return {
@@ -107,4 +111,8 @@ class StateEvaluationResult(BaseModel):
             "evidence_events": self.evidence_events,
             "evaluated_at": self.evaluated_at,
             "rule_id": self.rule_id,
+            "recovered_amount": self.recovered_amount,
+            "outstanding_amount": self.outstanding_amount,
+            "is_partial": self.is_partial,
         }
+

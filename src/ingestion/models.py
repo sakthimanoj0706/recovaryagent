@@ -14,9 +14,11 @@ class IngestionStatus(str, Enum):
     """Lifecycle status of an ingested event / webhook."""
     PROCESSED = "PROCESSED"
     DUPLICATE_EVENT = "DUPLICATE_EVENT"
+    CONFLICTING_DUPLICATE_EVENT = "CONFLICTING_DUPLICATE_EVENT"
     MALFORMED_EVENT = "MALFORMED_EVENT"
     EXCEPTION = "EXCEPTION"
     FILTERED = "FILTERED"
+
 
 
 class WebhookPayload(BaseModel):

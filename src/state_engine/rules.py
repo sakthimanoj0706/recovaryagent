@@ -15,12 +15,13 @@ from typing import List, Optional, Tuple, Dict, Any
 from .models import FinancialState, RecommendedAction, Event, PaymentRecord, StateEvaluationResult
 
 
-SUCCESS_EVENTS = {"payment.authorized", "payment.captured"}
+SUCCESS_EVENTS = {"payment.authorized", "payment.captured", "payment.partially_captured"}
 TERMINAL_SUCCESS = "payment.captured"
 FAILURE_EVENTS = {"payment.failed"}
 PENDING_EVENTS = {"payment.pending"}
 CREATION_EVENTS = {"payment.created"}
 REFUND_EVENTS = {"payment.refunded"}
+
 
 
 def parse_timestamp(ts_str: Optional[str]) -> Optional[datetime]:
@@ -194,26 +195,59 @@ def evaluate_state_rules(
             )
 
     # -------------------------------------------------------------
-    # STATE-RULE-001: Late Authorization Flip (FAILED -> AUTHORIZED/CAPTURED)
+    # STATE-RULE-001: Late Authorization Flip & Partial Capture
     # -------------------------------------------------------------
     failed_indices = [i for i, e in enumerate(deduped_events) if e.event == "payment.failed"]
     success_indices = [i for i, e in enumerate(deduped_events) if e.event in SUCCESS_EVENTS]
+    refund_indices = [i for i, e in enumerate(deduped_events) if e.event in REFUND_EVENTS]
     has_late_auth_flag = any(e.late_authorization is True for e in deduped_events)
 
-    if failed_indices and (success_indices or has_late_auth_flag):
-        # Check if any success event occurred AFTER the failure event
-        first_fail_idx = min(failed_indices)
-        last_success_idx = max(success_indices) if success_indices else -1
-        if last_success_idx > first_fail_idx or has_late_auth_flag:
+    # 1. Refund after Capture on this payment
+    if refund_indices and success_indices:
+        last_refund_idx = max(refund_indices)
+        last_succ_idx = max(success_indices)
+        if last_refund_idx > last_succ_idx:
             return StateEvaluationResult(
                 payment_id=pid,
                 order_id=oid,
                 state=FinancialState.ALREADY_RECOVERED,
                 recommended_action=RecommendedAction.STOP,
-                reason="Payment initially failed but was subsequently authorized/captured (late authorization flip-flop).",
+                reason="Payment was successfully captured and subsequently refunded. Automated recovery prohibited.",
+                evidence_events=event_names,
+                evaluated_at=now_iso,
+                rule_id="STATE-RULE-003",
+                recovered_amount=0.0,
+                outstanding_amount=payment.amount or 0.0,
+            )
+
+    # 2. Failed followed by Success (Late Auth Flip or Partial Capture)
+    if failed_indices and (success_indices or has_late_auth_flag):
+        # Check if any success event occurred AFTER the failure event
+        first_fail_idx = min(failed_indices)
+        last_success_idx = max(success_indices) if success_indices else -1
+        if last_success_idx > first_fail_idx or has_late_auth_flag:
+            succ_ev = deduped_events[last_success_idx] if last_success_idx >= 0 else None
+            is_partial = bool(succ_ev and (succ_ev.event == "payment.partially_captured" or (succ_ev.amount is not None and payment.amount is not None and succ_ev.amount < payment.amount)))
+            rec_amt = succ_ev.amount if (succ_ev and succ_ev.amount is not None) else (payment.amount or 0.0)
+            out_amt = max(0.0, (payment.amount or 0.0) - (rec_amt or 0.0)) if payment.amount else 0.0
+            
+            reason_str = (
+                f"Partial capture confirmed: Rs. {rec_amt:,.2f} recovered of Rs. {payment.amount:,.2f}."
+                if is_partial
+                else "Payment initially failed but was subsequently authorized/captured (late authorization flip-flop)."
+            )
+            return StateEvaluationResult(
+                payment_id=pid,
+                order_id=oid,
+                state=FinancialState.ALREADY_RECOVERED,
+                recommended_action=RecommendedAction.STOP,
+                reason=reason_str,
                 evidence_events=event_names,
                 evaluated_at=now_iso,
                 rule_id="STATE-RULE-001",
+                recovered_amount=rec_amt,
+                outstanding_amount=out_amt,
+                is_partial=is_partial,
             )
 
     # -------------------------------------------------------------
@@ -230,8 +264,9 @@ def evaluate_state_rules(
         for other_pid, other_evs in other_payments.items():
             sorted_other, _ = sort_events_chronologically(other_evs)
             has_other_success = any(e.event in SUCCESS_EVENTS for e in sorted_other)
-            # Make sure it didn't fail after success without recovery
-            if has_other_success:
+            has_other_refund = any(e.event in REFUND_EVENTS for e in sorted_other)
+            # Make sure it didn't fail after success without recovery, and wasn't refunded
+            if has_other_success and not has_other_refund:
                 return StateEvaluationResult(
                     payment_id=pid,
                     order_id=oid,
@@ -250,6 +285,11 @@ def evaluate_state_rules(
     # STATE-RULE-003: Clean Successful Authorization / Capture
     # -------------------------------------------------------------
     if not failed_indices and (success_indices or (payment.has_settlement is True and payment.settlement_matches_order is True)):
+        succ_ev = deduped_events[max(success_indices)] if success_indices else None
+        is_partial = bool(succ_ev and (succ_ev.event == "payment.partially_captured" or (succ_ev.amount is not None and payment.amount is not None and succ_ev.amount < payment.amount)))
+        rec_amt = succ_ev.amount if (succ_ev and succ_ev.amount is not None) else (payment.amount or 0.0)
+        out_amt = max(0.0, (payment.amount or 0.0) - (rec_amt or 0.0)) if payment.amount else 0.0
+
         return StateEvaluationResult(
             payment_id=pid,
             order_id=oid,
@@ -259,7 +299,11 @@ def evaluate_state_rules(
             evidence_events=event_names if event_names else ["settlement.verified"],
             evaluated_at=now_iso,
             rule_id="STATE-RULE-003",
+            recovered_amount=rec_amt,
+            outstanding_amount=out_amt,
+            is_partial=is_partial,
         )
+
 
     # -------------------------------------------------------------
     # STATE-RULE-004: Pending / Unresolved / In-Flight State

@@ -38,6 +38,7 @@ class EventProcessor:
 
         self._lock = threading.Lock()
         self._seen_event_ids: Set[Tuple[str, str]] = set()  # (provider, event_id)
+        self._seen_events: Dict[Tuple[str, str], IngestedEventRecord] = {}  # (provider, event_id) -> record
         self._payment_event_store: Dict[str, List[Event]] = {}  # payment_id -> List[Event]
         self._payment_raw_records: Dict[str, List[IngestedEventRecord]] = {}
         self._timeline_events: List[Dict[str, Any]] = []
@@ -46,6 +47,7 @@ class EventProcessor:
         """Reset internal memory store for test isolation."""
         with self._lock:
             self._seen_event_ids.clear()
+            self._seen_events.clear()
             self._payment_event_store.clear()
             self._payment_raw_records.clear()
             self._timeline_events.clear()
@@ -88,9 +90,33 @@ class EventProcessor:
         amt = parsed_payload.amount or 0.0
 
         with self._lock:
-            # 2. DEDUPLICATE (Idempotency Check)
+            # 2. DEDUPLICATE & CONFLICT DETECTION (Idempotency & Tamper Check)
             dedup_key = (provider, event_id)
             if dedup_key in self._seen_event_ids:
+                stored_rec = self._seen_events.get(dedup_key)
+                if stored_rec is not None:
+                    # Check for conflicting event type or amount
+                    stored_ev = stored_rec.normalized_event
+                    is_conflicting = (
+                        stored_ev.event != parsed_payload.event
+                        or (parsed_payload.amount is not None and stored_ev.amount is not None and abs(stored_ev.amount - parsed_payload.amount) > 0.01)
+                    )
+                    if is_conflicting:
+                        return IngestionResult(
+                            status=IngestionStatus.CONFLICTING_DUPLICATE_EVENT,
+                            event_id=event_id,
+                            provider=provider,
+                            payment_id=pid,
+                            order_id=oid,
+                            message=(
+                                f"Conflicting duplicate event '{event_id}' rejected: "
+                                f"originally received as '{stored_ev.event}' (amount: {stored_ev.amount}), "
+                                f"conflicting payload claimed '{parsed_payload.event}' (amount: {parsed_payload.amount}). "
+                                f"Original event preserved; zero state modification."
+                            ),
+                            timestamp=now_iso,
+                        )
+
                 return IngestionResult(
                     status=IngestionStatus.DUPLICATE_EVENT,
                     event_id=event_id,
@@ -106,6 +132,7 @@ class EventProcessor:
 
             # 3. NORMALIZE
             normalized_event = EventNormalizer.normalize(parsed_payload)
+
 
             # 4. FETCH PREVIOUS STATE
             existing_events = list(self._payment_event_store.get(pid, []))
@@ -141,6 +168,8 @@ class EventProcessor:
             if pid not in self._payment_raw_records:
                 self._payment_raw_records[pid] = []
             self._payment_raw_records[pid].append(ingested_rec)
+            self._seen_events[dedup_key] = ingested_rec
+
 
             # 6. EVALUATE FINANCIAL STATE ENGINE
             eval_after = self.state_engine.evaluate_payment(payment_rec, updated_events)
