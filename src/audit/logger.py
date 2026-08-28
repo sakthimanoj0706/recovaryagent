@@ -63,7 +63,12 @@ class AuditLogger:
 
         return entry
 
+    def log_execution(self, **kwargs) -> Dict[str, Any]:
+        """Convenience method to log an execution using keyword arguments."""
+        return self.log(kwargs)
+
     def get_records(self) -> List[AuditRecord]:
+
         """
         Read all persisted audit records from log file.
         """

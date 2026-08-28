@@ -163,25 +163,41 @@ class ActionExecutor:
 
     def execute(
         self,
-        plan: RecoveryPlan,
-        context: RecoveryContext,
+        plan: Optional[RecoveryPlan] = None,
+        context: Optional[RecoveryContext] = None,
         force_success: Optional[bool] = None,
+        payment: Optional[Any] = None,
+        action: Optional[RecoveryAction] = None,
     ) -> ActionExecutionResponse:
         """
         Dispatch execution based on the recommended RecoveryAction.
+        Supports both (plan, context) and (payment, action) call styles.
         """
-        action = plan.action
-        if action == RecoveryAction.RETRY:
-            return self.execute_retry(plan.payment_id, amount=context.amount, context=context, force_success=force_success)
-        elif action == RecoveryAction.PAYMENT_LINK:
-            return self.execute_payment_link(plan.payment_id, amount=context.amount, context=context, force_success=force_success)
-        elif action == RecoveryAction.REMINDER:
-            return self.execute_reminder(plan.payment_id, channel="sms", amount=context.amount, context=context, force_success=force_success)
-        elif action == RecoveryAction.WAIT:
-            return self.execute_wait(plan.payment_id, duration_seconds=60, context=context, force_success=force_success)
-        elif action == RecoveryAction.ESCALATE:
-            return self.execute_escalate(plan.payment_id, reason=plan.reason, context=context, force_success=force_success)
-        elif action == RecoveryAction.STOP:
-            return self.execute_stop(plan.payment_id, reason=plan.reason, context=context)
+        act = action or (plan.action if plan else RecoveryAction.STOP)
+        pid = getattr(payment, "payment_id", None) or (plan.payment_id if plan else "unknown")
+        amt = getattr(payment, "amount", 0.0) or (context.amount if context else 0.0)
+        
+        if context is None:
+            context = RecoveryContext(
+                payment_id=pid,
+                amount=amt,
+                financial_state="VERIFIED_LOST",
+            )
+
+        if act == RecoveryAction.RETRY:
+            return self.execute_retry(pid, amount=amt, context=context, force_success=force_success)
+        elif act == RecoveryAction.PAYMENT_LINK:
+            return self.execute_payment_link(pid, amount=amt, context=context, force_success=force_success)
+        elif act == RecoveryAction.REMINDER:
+            return self.execute_reminder(pid, channel="sms", amount=amt, context=context, force_success=force_success)
+        elif act == RecoveryAction.WAIT:
+            return self.execute_wait(pid, duration_seconds=60, context=context, force_success=force_success)
+        elif act == RecoveryAction.ESCALATE:
+            rsn = (plan.reason if plan else "Manual escalation")
+            return self.execute_escalate(pid, reason=rsn, context=context, force_success=force_success)
+        elif act == RecoveryAction.STOP:
+            rsn = (plan.reason if plan else "Recovery halted")
+            return self.execute_stop(pid, reason=rsn, context=context)
         else:
-            return self.execute_stop(plan.payment_id, reason=f"Unknown action {action}", context=context)
+            return self.execute_stop(pid, reason=f"Unknown action {act}", context=context)
+

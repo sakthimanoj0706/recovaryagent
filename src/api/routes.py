@@ -211,6 +211,37 @@ def get_recovery_trace(payment_id: str) -> Dict[str, Any]:
     return trace.model_dump()
 
 
+@router.post("/agent/recover/{payment_id}")
+def run_agentic_recovery(payment_id: str) -> Dict[str, Any]:
+    """
+    Execute bounded autonomous agent recovery loop on a payment.
+    Returns full AgentRunResult telemetry including steps, tool calls, and policy checks.
+    """
+    df, events_map = load_dataset()
+    match = df[df["payment_id"] == payment_id]
+    if match.empty:
+        raise HTTPException(status_code=404, detail=f"Payment {payment_id} not found.")
+
+    row_dict = match.iloc[0].to_dict()
+    payment = PaymentRecord(**row_dict)
+    events = events_map.get(payment_id, [])
+
+    run_result = orchestrator.run_recovery_agent(payment, events)
+    return run_result.model_dump()
+
+
+@router.get("/agent/runs/{run_id}")
+def get_agent_run(run_id: str) -> Dict[str, Any]:
+    """
+    Retrieve full execution trace for an autonomous agent run.
+    """
+    run_result = orchestrator.get_run(run_id)
+    if not run_result:
+        raise HTTPException(status_code=404, detail=f"Agent run {run_id} not found.")
+    return run_result.model_dump()
+
+
+
 
 @router.get("/audit")
 def get_audit_trail(limit: int = 50) -> List[Dict[str, Any]]:

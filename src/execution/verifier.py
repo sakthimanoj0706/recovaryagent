@@ -69,3 +69,13 @@ class RecoveryVerifier:
             reason=state_eval.reason,
             is_verified_recovery=is_recovered,
         )
+
+    def verify_post_action(
+        self,
+        payment: PaymentRecord,
+        post_action_events: List[Event],
+        order_events: Optional[List[Event]] = None,
+    ) -> Any:
+        """Direct verification on the financial state engine with post-action events."""
+        return self.state_engine.evaluate_payment(payment, post_action_events, order_events)
+

@@ -1,11 +1,14 @@
 """
 Agentic Recovery Planner for RecoverAI.
-Transforms structured RecoveryContext into a validated AgentRecommendation.
-Zero authority over financial state, expected net value, or verification.
+Transforms structured RecoveryContext into a strictly validated AgentPlanResponse / AgentRecommendation.
+Guarantees zero authority over financial state, expected net value, or verification.
 """
 
+import json
 import logging
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
+from pydantic import ValidationError
+
 from .models import (
     RecoveryAction,
     RecoveryPriority,
@@ -13,6 +16,7 @@ from .models import (
     AgentRecommendation,
     RecoveryPlan,
 )
+from .schemas import AgentPlanResponse, AgentAction
 from .policy import (
     get_failure_policy,
     get_policy_hints_text,
@@ -27,8 +31,8 @@ logger = logging.getLogger("recoverai.agent.planner")
 class AgenticRecoveryPlanner:
     """
     Agentic Recovery Planner.
-    Consults the LLM for advisory planning, but validates output strictly against
-    the AgentRecommendation schema and deterministic policy rules before returning.
+    Consults the LLM for advisory planning, strictly parsing output into AgentPlanResponse
+    and validating against deterministic policy rules.
     """
 
     def __init__(self, llm_client: Optional[BaseLLMClient] = None):
@@ -37,7 +41,7 @@ class AgenticRecoveryPlanner:
     def plan_recovery(self, context: RecoveryContext) -> Optional[AgentRecommendation]:
         """
         Generate a strictly validated AgentRecommendation from structured RecoveryContext.
-        Returns None if an active LLM client failed or returned invalid output.
+        Returns None if an active LLM client failed or returned invalid output, triggering safe escalation.
         """
         code = context.failure_code or context.failure_reason
         policy = get_failure_policy(code, context.hardness)
@@ -80,26 +84,40 @@ class AgenticRecoveryPlanner:
             logger.warning("LLM planner returned None / failed for payment %s", context.payment_id)
             return None
 
-        # 3. Format into typed AgentRecommendation
+        # 3. Validate with Pydantic AgentPlanResponse schema
+        try:
+            plan_dict = {
+                "action": raw_plan.action.value if hasattr(raw_plan.action, "value") else str(raw_plan.action),
+                "confidence": getattr(raw_plan, "confidence", 0.85),
+                "reason": getattr(raw_plan, "reason", getattr(raw_plan, "rationale", "LLM advisory plan")),
+                "requires_verification": True,
+            }
+            validated_response = AgentPlanResponse.model_validate(plan_dict)
+            action_enum = RecoveryAction(validated_response.action.value)
+        except (ValidationError, ValueError, Exception) as val_err:
+            logger.warning("LLM response failed strict schema validation: %s", val_err)
+            return None
+
+        # 4. Format into typed AgentRecommendation
         recommendation = AgentRecommendation(
             payment_id=context.payment_id,
-            action=raw_plan.action,
+            action=action_enum,
             priority=getattr(raw_plan, "priority", RecoveryPriority.MEDIUM),
             channel=getattr(raw_plan, "channel", policy.recommended_channel),
             timing=getattr(raw_plan, "timing", "immediate"),
             message_strategy=getattr(raw_plan, "message_strategy", "standard_recovery"),
-            rationale=getattr(raw_plan, "rationale", getattr(raw_plan, "reason", "Advisory recommendation.")),
-            confidence=raw_plan.confidence,
+            rationale=validated_response.reason,
+            confidence=validated_response.confidence,
             policy_references=getattr(raw_plan, "policy_references", [f"POLICY-{policy.failure_code}"]),
             observed_failure=code,
-            selected_strategy=raw_plan.action.value,
+            selected_strategy=action_enum.value,
             policy_basis=policy.description,
-            risk_level="LOW" if raw_plan.action in [RecoveryAction.PAYMENT_LINK, RecoveryAction.REMINDER] else "MEDIUM",
+            risk_level="LOW" if action_enum in [RecoveryAction.PAYMENT_LINK, RecoveryAction.REMINDER] else "MEDIUM",
             expected_net_value=context.expected_net_value,
         )
 
         return recommendation
 
 
-# Backward compatibility alias
+# Alias for backward compatibility
 AgentPlanner = AgenticRecoveryPlanner

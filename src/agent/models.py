@@ -18,6 +18,16 @@ class RecoveryAction(str, Enum):
     ESCALATE = "ESCALATE"
     STOP = "STOP"
 
+    @classmethod
+    def is_valid_action(cls, val: Any) -> bool:
+        if not val:
+            return False
+        try:
+            cls(str(val).upper().strip())
+            return True
+        except (ValueError, KeyError, AttributeError):
+            return False
+
 
 class RecoveryPriority(str, Enum):
     """Priority tier for action dispatch."""
@@ -146,6 +156,11 @@ class FirewallResult(BaseModel):
     action: RecoveryAction
     rule_id: Optional[str] = None
     reason: str
+
+    @property
+    def decision(self) -> FirewallDecision:
+        return self.status
+
 
 
 class AgentExecutionResult(BaseModel):

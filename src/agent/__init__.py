@@ -13,15 +13,25 @@ from .models import (
     FirewallResult,
     AgentExecutionResult,
 )
+from .schemas import (
+    AgentAction,
+    AgentStepStage,
+    AgentStepRecord,
+    AgentRunResult,
+    ToolCallRecord,
+    PolicyCheckRecord,
+    AgentPlanResponse,
+)
+from .memory import AgentMemory, ActionAttemptMemory
 from .tools import RecoveryToolRegistry
 from .policy import (
+    PolicyEngine,
     FailurePolicy,
     FAILURE_POLICY_REGISTRY,
     get_failure_policy,
     validate_agent_recommendation_against_policy,
     determine_policy_action,
     get_policy_hints_text,
-    POLICY_HINTS,
 )
 from .prompts import AGENTIC_SYSTEM_INSTRUCTION, build_planner_prompt
 from .firewall import RecoveryFirewall
@@ -34,7 +44,8 @@ from .llm import (
     get_default_llm_client,
 )
 from .planner import AgenticRecoveryPlanner, AgentPlanner
-from .orchestrator import RecoverAIOrchestrator, RecoveryOrchestrator, run_recovery_agent
+from .orchestrator import AgenticRecoveryOrchestrator, RecoverAIOrchestrator
+from .trace import AgentDecisionTrace, build_decision_trace
 
 __all__ = [
     "RecoveryAction",
@@ -46,14 +57,23 @@ __all__ = [
     "RecoveryPlan",
     "FirewallResult",
     "AgentExecutionResult",
+    "AgentAction",
+    "AgentStepStage",
+    "AgentStepRecord",
+    "AgentRunResult",
+    "ToolCallRecord",
+    "PolicyCheckRecord",
+    "AgentPlanResponse",
+    "AgentMemory",
+    "ActionAttemptMemory",
     "RecoveryToolRegistry",
+    "PolicyEngine",
     "FailurePolicy",
     "FAILURE_POLICY_REGISTRY",
     "get_failure_policy",
     "validate_agent_recommendation_against_policy",
     "determine_policy_action",
     "get_policy_hints_text",
-    "POLICY_HINTS",
     "AGENTIC_SYSTEM_INSTRUCTION",
     "build_planner_prompt",
     "RecoveryFirewall",
@@ -65,7 +85,8 @@ __all__ = [
     "get_default_llm_client",
     "AgenticRecoveryPlanner",
     "AgentPlanner",
+    "AgenticRecoveryOrchestrator",
     "RecoverAIOrchestrator",
-    "RecoveryOrchestrator",
-    "run_recovery_agent",
+    "AgentDecisionTrace",
+    "build_decision_trace",
 ]

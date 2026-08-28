@@ -97,13 +97,14 @@ class RecoveryFirewall:
         # -----------------------------------------------------------------
         # FIREWALL-002: Expected Net Value <= 0
         # -----------------------------------------------------------------
-        if env <= 0.0:
+        if context.expected_net_value is not None and context.expected_net_value <= 0.0:
             return FirewallResult(
                 status=FirewallDecision.STOP,
                 action=RecoveryAction.STOP,
                 rule_id="FIREWALL-002",
-                reason=f"Recovery is not economically worthwhile (Expected Net Value: Rs. {env:,.2f} <= 0).",
+                reason=f"Recovery is not economically worthwhile (Expected Net Value: Rs. {context.expected_net_value:,.2f} <= 0).",
             )
+
 
         # -----------------------------------------------------------------
         # FIREWALL-003: Recovery Decision check (Action is STOP)
@@ -158,3 +159,28 @@ class RecoveryFirewall:
             rule_id=None,
             reason="Action passed all deterministic firewall policies and economic thresholds.",
         )
+
+    def evaluate_plan(
+        self,
+        financial_state: Any,
+        expected_net_value: Optional[float],
+        recommendation: Optional[RecoveryPlan],
+        context: Optional[RecoveryContext] = None,
+    ) -> FirewallResult:
+        """Convenience method wrapping validate_action for orchestrators."""
+        if context is None:
+            state_val = financial_state.value if hasattr(financial_state, "value") else str(financial_state)
+            pid = getattr(recommendation, "payment_id", "unknown") if recommendation else "unknown"
+            context = RecoveryContext(
+                payment_id=pid,
+                amount=0.0,
+                financial_state=state_val,
+                expected_net_value=expected_net_value,
+            )
+        return self.validate_action(
+            context=context,
+            plan=recommendation,
+            proposed_action=recommendation.action if recommendation else None,
+            llm_valid=recommendation is not None,
+        )
+

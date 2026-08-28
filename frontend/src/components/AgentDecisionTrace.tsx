@@ -173,6 +173,7 @@ export const AgentDecisionTrace: React.FC<AgentDecisionTraceProps> = ({ trace, o
             <div className="flex items-center gap-2">
               <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[11px] font-bold">STAGE 1: PROVE</span>
               <span className="text-white font-bold text-xs">Financial State Engine</span>
+              <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[10px] font-extrabold border border-emerald-500/30">LEDGER TRUTH</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-[11px] text-cyan-300 font-semibold">{t.prove.state_rule_id || 'STATE-RULE'}</span>
@@ -202,6 +203,7 @@ export const AgentDecisionTrace: React.FC<AgentDecisionTraceProps> = ({ trace, o
             <div className="flex items-center gap-2">
               <span className="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 text-[11px] font-bold">STAGE 2: PRIORITIZE</span>
               <span className="text-white font-bold text-xs">Recovery Intelligence &amp; Economics</span>
+              <span className="px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 text-[10px] font-extrabold border border-indigo-500/30">POLICY</span>
             </div>
             <span className={`px-2 py-0.5 rounded text-xs font-bold ${
               t.prioritize.economic_decision === 'RECOVERY_WORTHWHILE'
@@ -242,7 +244,8 @@ export const AgentDecisionTrace: React.FC<AgentDecisionTraceProps> = ({ trace, o
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[11px] font-bold">STAGE 3: PLAN</span>
-              <span className="text-white font-bold text-xs">Agentic Recovery Planner (Advisory)</span>
+              <span className="text-white font-bold text-xs">Agentic Recovery Planner</span>
+              <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 text-[10px] font-extrabold border border-amber-500/30">AI ADVISORY</span>
             </div>
             <span className="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 text-xs font-bold border border-cyan-500/30">
               {t.plan.agent_action}
@@ -263,6 +266,7 @@ export const AgentDecisionTrace: React.FC<AgentDecisionTraceProps> = ({ trace, o
             <div className="flex items-center gap-2">
               <span className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 text-[11px] font-bold">STAGE 4: GUARD</span>
               <span className="text-white font-bold text-xs">Deterministic Recovery Firewall</span>
+              <span className="px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-400 text-[10px] font-extrabold border border-rose-500/30">FIREWALL</span>
             </div>
             <div className="flex items-center gap-2">
               {t.guard.firewall_rule_id && (
@@ -292,6 +296,7 @@ export const AgentDecisionTrace: React.FC<AgentDecisionTraceProps> = ({ trace, o
             <div className="flex items-center gap-2">
               <span className="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 text-[11px] font-bold">STAGE 5: ACT</span>
               <span className="text-white font-bold text-xs">Simulated Action Executor</span>
+              <span className="px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 text-[10px] font-extrabold border border-cyan-500/30">EXECUTOR</span>
             </div>
             <span className={`px-2 py-0.5 rounded text-xs font-bold ${
               t.act.execution_status === 'SIMULATED_SUCCESS'
@@ -318,6 +323,7 @@ export const AgentDecisionTrace: React.FC<AgentDecisionTraceProps> = ({ trace, o
             <div className="flex items-center gap-2">
               <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[11px] font-bold">STAGE 6: VERIFY</span>
               <span className="text-white font-bold text-xs">Closed-Loop Verification</span>
+              <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[10px] font-extrabold border border-emerald-500/30">LEDGER TRUTH</span>
             </div>
             <span className={`px-2 py-0.5 rounded text-xs font-extrabold ${
               t.verify.final_result === 'RECOVERY_SUCCESS'
@@ -336,6 +342,7 @@ export const AgentDecisionTrace: React.FC<AgentDecisionTraceProps> = ({ trace, o
       </div>
 
       {/* Final Accounting Breakdown (4 Distinct Buckets) */}
+
       <div className="pt-4 border-t border-white/10">
         <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
           Final Financial Accounting Breakdown
