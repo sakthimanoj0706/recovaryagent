@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { HeroMetrics } from './components/HeroMetrics';
+import { SystemHealthPanel } from './components/SystemHealthPanel';
+import { EventStreamPanel, TimelineEventItem } from './components/EventStreamPanel';
 import { LivePipeline } from './components/LivePipeline';
 import { WhyDidWeActPanel } from './components/WhyDidWeActPanel';
 import { VerificationProofPanel } from './components/VerificationProofPanel';
@@ -17,6 +19,8 @@ import {
   fetchMetrics,
   fetchPayments,
   fetchAuditTrail,
+  fetchEventTimeline,
+  fetchSystemHealth,
   runDemoScenario,
   runRecovery,
 } from './api';
@@ -24,6 +28,8 @@ import { SystemMetrics, PaymentItem, ClosedLoopOutcome, PipelineStep, AuditEntry
 
 export const App: React.FC = () => {
   const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
+  const [systemHealth, setSystemHealth] = useState<any>(null);
+  const [eventStream, setEventStream] = useState<TimelineEventItem[]>([]);
   const [payments, setPayments] = useState<PaymentItem[]>([]);
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([]);
   const [activeOutcome, setActiveOutcome] = useState<ClosedLoopOutcome | null>(null);
@@ -38,20 +44,25 @@ export const App: React.FC = () => {
   const loadInitialData = async () => {
     setIsLoading(true);
     try {
-      const [m, p, a] = await Promise.all([
+      const [m, p, a, h, ev] = await Promise.all([
         fetchMetrics().catch(() => null),
         fetchPayments(50, 0, 'ALL').catch(() => ({ total: 0, payments: [] })),
         fetchAuditTrail(50).catch(() => []),
+        fetchSystemHealth().catch(() => null),
+        fetchEventTimeline(30).catch(() => ({ total_events: 0, timeline: [] })),
       ]);
       if (m) setMetrics(m);
       if (p.payments) setPayments(p.payments);
       if (a) setAuditEntries(a);
+      if (h) setSystemHealth(h);
+      if (ev && ev.timeline) setEventStream(ev.timeline);
     } catch (err) {
       console.error('Failed to load initial data', err);
     } finally {
       setIsLoading(false);
     }
   };
+
 
   useEffect(() => {
     loadInitialData();
@@ -134,6 +145,9 @@ export const App: React.FC = () => {
         {/* Top Hero KPI Cards */}
         <HeroMetrics metrics={metrics} />
 
+        {/* System Health & Module Topology Bar (Step 6) */}
+        <SystemHealthPanel health={systemHealth} />
+
         {/* 5 Scenario Quick Trigger Bar */}
         <ScenarioSimulator onRunScenario={handleRunScenario} isRunning={isPipelineRunning} />
 
@@ -156,6 +170,12 @@ export const App: React.FC = () => {
           isRunning={isPipelineRunning}
         />
 
+        {/* Real-Time Event Stream & Webhook Ingestion Feed (Step 6) */}
+        <EventStreamPanel
+          events={eventStream}
+          onRefresh={loadInitialData}
+          isLoading={isLoading}
+        />
 
         {/* Explainability Matrix & Verification Proof Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -182,6 +202,7 @@ export const App: React.FC = () => {
           selectedPaymentId={selectedPaymentId}
           isLoading={isPipelineRunning}
         />
+
       </main>
 
       {/* Footer */}

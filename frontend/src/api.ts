@@ -50,3 +50,26 @@ export async function fetchRecoveryTrace(paymentId: string): Promise<any> {
   return res.json();
 }
 
+export async function fetchEventTimeline(limit = 50): Promise<{ total_events: number; timeline: any[] }> {
+  const res = await fetch(`${API_BASE}/events/timeline?limit=${limit}`);
+  if (!res.ok) throw new Error('Failed to fetch event timeline');
+  return res.json();
+}
+
+export async function fetchSystemHealth(): Promise<any> {
+  const res = await fetch(`${API_BASE}/system/health`);
+  if (!res.ok) throw new Error('Failed to fetch system health');
+  return res.json();
+}
+
+export async function postPaymentWebhook(payload: any): Promise<any> {
+  const res = await fetch(`${API_BASE}/webhooks/payment`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error('Failed to submit webhook');
+  return res.json();
+}
+
+

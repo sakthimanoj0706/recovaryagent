@@ -407,3 +407,62 @@ def run_demo_scenario(scenario: Optional[str] = None, scenario_id: Optional[str]
         "outcome": outcome.model_dump(),
         "timeline": timeline,
     }
+
+
+# =============================================================================
+# EVENT INGESTION & WEBHOOK API (Step 6)
+# =============================================================================
+
+from ingestion import get_event_processor, WebhookPayload
+from gateway import get_gateway
+
+
+@router.post("/webhooks/payment")
+def handle_payment_webhook(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Real-time payment webhook ingestion endpoint.
+    Idempotently validates, normalizes, stores, and evaluates financial events.
+    """
+    processor = get_event_processor()
+    result = processor.process_webhook(payload)
+    return result.to_dict()
+
+
+@router.get("/events/timeline")
+def get_event_timeline(limit: int = 50) -> Dict[str, Any]:
+    """
+    Retrieve chronological event ingestion timeline for the Command Center.
+    """
+    processor = get_event_processor()
+    events = processor.get_timeline(limit=limit)
+    return {
+        "total_events": len(events),
+        "timeline": events,
+    }
+
+
+@router.get("/system/health")
+def get_system_health() -> Dict[str, Any]:
+    """
+    System Health Status Report across all RecoverAI modules.
+    """
+    gateway_inst = get_gateway()
+    return {
+        "timestamp": pd.Timestamp.now("UTC").isoformat(),
+        "status": "OPERATIONAL",
+        "simulation_mode": True,
+        "subsystems": {
+            "ingestion": {"status": "HEALTHY", "mode": "IDEMPOTENT_STREAM"},
+            "state_engine": {"status": "HEALTHY", "mode": "DETERMINISTIC_AUTHORITY"},
+            "agent": {"status": "HEALTHY", "mode": "BOUNDED_ADVISORY"},
+            "firewall": {"status": "ACTIVE", "mode": "HARD_GATES"},
+            "gateway": {
+                "status": "SIMULATION",
+                "provider": gateway_inst.provider_name,
+                "is_simulation": gateway_inst.is_simulation,
+            },
+            "verifier": {"status": "HEALTHY", "mode": "INDEPENDENT_LEDGER"},
+            "audit": {"status": "APPEND_ONLY", "mode": "IMMUTABLE_JSONL"},
+        },
+    }
+
