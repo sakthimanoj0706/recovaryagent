@@ -2,6 +2,7 @@
 Data Models for Real-Time Event Ingestion and Webhook Processing in RecoverAI.
 """
 
+import uuid
 from enum import Enum
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
@@ -45,6 +46,7 @@ class IngestedEventRecord(BaseModel):
     """
     model_config = ConfigDict(extra="allow")
 
+    run_id: str = Field(default_factory=lambda: f"run_{uuid.uuid4().hex[:10]}")
     event_id: str
     provider: str
     normalized_event: Event
@@ -59,6 +61,7 @@ class IngestionResult(BaseModel):
     """
     model_config = ConfigDict(extra="allow")
 
+    run_id: str = Field(default_factory=lambda: f"run_{uuid.uuid4().hex[:10]}")
     status: IngestionStatus
     event_id: str
     provider: str
@@ -74,6 +77,7 @@ class IngestionResult(BaseModel):
 
     def to_dict(self) -> Dict[str, Any]:
         return {
+            "run_id": self.run_id,
             "status": self.status.value if isinstance(self.status, IngestionStatus) else str(self.status),
             "event_id": self.event_id,
             "provider": self.provider,
@@ -87,3 +91,4 @@ class IngestionResult(BaseModel):
             "orchestrator_result": self.orchestrator_result,
             "timestamp": self.timestamp,
         }
+

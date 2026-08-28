@@ -2,6 +2,7 @@
 Outcome determination and data structures for RecoverAI Closed-Loop Verification.
 """
 
+import uuid
 from enum import Enum
 from typing import Optional, Dict, Any, Tuple
 from pydantic import BaseModel, Field, ConfigDict
@@ -29,9 +30,11 @@ class ClosedLoopOutcome(BaseModel):
     """
     model_config = ConfigDict(extra="allow")
 
+    run_id: str = Field(default_factory=lambda: f"run_{uuid.uuid4().hex[:10]}")
     payment_id: str
     order_id: Optional[str] = None
     amount: float
+
     initial_state: str
     recovery_probability: Optional[float] = None
     expected_net_value: Optional[float] = None

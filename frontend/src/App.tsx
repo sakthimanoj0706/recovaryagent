@@ -4,6 +4,7 @@ import { HeroMetrics } from './components/HeroMetrics';
 import { SystemHealthPanel } from './components/SystemHealthPanel';
 import { EventStreamPanel, TimelineEventItem } from './components/EventStreamPanel';
 import { LivePipeline } from './components/LivePipeline';
+import { FinancialTruthPanel } from './components/FinancialTruthPanel';
 import { WhyDidWeActPanel } from './components/WhyDidWeActPanel';
 import { VerificationProofPanel } from './components/VerificationProofPanel';
 import { FlipFlopHighlight } from './components/FlipFlopHighlight';
@@ -14,6 +15,7 @@ import { PaymentsExplorer } from './components/PaymentsExplorer';
 import { AuditTrailModal } from './components/AuditTrailModal';
 import { PaymentDetailPanel } from './components/PaymentDetailPanel';
 import { AgentDecisionTrace } from './components/AgentDecisionTrace';
+
 
 import {
   fetchMetrics,
@@ -161,8 +163,12 @@ export const App: React.FC = () => {
 
         {/* Agent 6-Stage Decision Trace & Safety Proof */}
         {activeOutcome && (
-          <AgentDecisionTrace outcome={activeOutcome} />
+          <>
+            <AgentDecisionTrace outcome={activeOutcome} />
+            <FinancialTruthPanel outcome={activeOutcome} />
+          </>
         )}
+
 
         {/* 5 Core Fintech Intelligence Showcase Cards */}
         <FlipFlopHighlight

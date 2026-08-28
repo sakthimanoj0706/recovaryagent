@@ -3,6 +3,7 @@ FastAPI Routes for RecoverAI Command Center.
 Bridges frontend dashboard to existing backend engine, recovery intelligence, agent planner, and verifier.
 """
 
+import os
 import json
 import uuid
 from pathlib import Path
@@ -444,25 +445,70 @@ def get_event_timeline(limit: int = 50) -> Dict[str, Any]:
 @router.get("/system/health")
 def get_system_health() -> Dict[str, Any]:
     """
-    System Health Status Report across all RecoverAI modules.
+    Comprehensive System Health Status Report across all RecoverAI modules.
     """
     gateway_inst = get_gateway()
+    is_model_loaded = bool(model is not None)
     return {
-        "timestamp": pd.Timestamp.now("UTC").isoformat(),
-        "status": "OPERATIONAL",
+        "status": "HEALTHY",
+        "version": "1.0.0",
         "simulation_mode": True,
+        "demo_mode": os.getenv("DEMO_MODE", "true").lower() == "true",
+        "model_loaded": is_model_loaded,
+        "gateway_mode": gateway_inst.provider_name,
+        "event_store_status": "ACTIVE",
+        "audit_status": "APPEND_ONLY",
+        "timestamp": pd.Timestamp.now("UTC").isoformat(),
         "subsystems": {
-            "ingestion": {"status": "HEALTHY", "mode": "IDEMPOTENT_STREAM"},
             "state_engine": {"status": "HEALTHY", "mode": "DETERMINISTIC_AUTHORITY"},
+            "recovery_intelligence": {
+                "status": "HEALTHY" if is_model_loaded else "HEURISTIC_FALLBACK",
+                "model_loaded": is_model_loaded,
+            },
             "agent": {"status": "HEALTHY", "mode": "BOUNDED_ADVISORY"},
+            "policy": {"status": "HEALTHY", "mode": "STRICT_ACTION_SPACE"},
             "firewall": {"status": "ACTIVE", "mode": "HARD_GATES"},
             "gateway": {
                 "status": "SIMULATION",
                 "provider": gateway_inst.provider_name,
                 "is_simulation": gateway_inst.is_simulation,
             },
+            "ingestion": {"status": "HEALTHY", "mode": "IDEMPOTENT_STREAM"},
             "verifier": {"status": "HEALTHY", "mode": "INDEPENDENT_LEDGER"},
             "audit": {"status": "APPEND_ONLY", "mode": "IMMUTABLE_JSONL"},
         },
     }
+
+
+@router.get("/system/ready")
+def get_system_ready() -> Dict[str, Any]:
+    """
+    Readiness Probe endpoint distinguishing HEALTHY, DEGRADED, or NOT_READY.
+    """
+    is_state_engine_ready = state_engine is not None
+    is_audit_ready = audit_logger is not None
+    is_gateway_ready = get_gateway() is not None
+    is_model_ready = model is not None
+
+    if not is_state_engine_ready or not is_audit_ready or not is_gateway_ready:
+        status = "NOT_READY"
+    elif not is_model_ready:
+        status = "DEGRADED"
+    else:
+        status = "HEALTHY"
+
+    return {
+        "status": status,
+        "ready": status in ["HEALTHY", "DEGRADED"],
+        "simulation_mode": True,
+        "subsystems_ready": {
+            "state_engine": is_state_engine_ready,
+            "firewall": True,
+            "gateway": is_gateway_ready,
+            "audit": is_audit_ready,
+            "model": is_model_ready,
+        },
+        "timestamp": pd.Timestamp.now("UTC").isoformat(),
+    }
+
 
