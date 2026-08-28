@@ -62,6 +62,15 @@ export async function fetchSystemHealth(): Promise<any> {
   return res.json();
 }
 
+export async function resetDemoState(): Promise<any> {
+  const res = await fetch(`${API_BASE}/demo/reset`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error('Failed to reset demo state');
+  return res.json();
+}
+
+
 export async function postPaymentWebhook(payload: any): Promise<any> {
   const res = await fetch(`${API_BASE}/webhooks/payment`, {
     method: 'POST',

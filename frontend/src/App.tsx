@@ -5,17 +5,16 @@ import { SystemHealthPanel } from './components/SystemHealthPanel';
 import { EventStreamPanel, TimelineEventItem } from './components/EventStreamPanel';
 import { LivePipeline } from './components/LivePipeline';
 import { FinancialTruthPanel } from './components/FinancialTruthPanel';
-import { WhyDidWeActPanel } from './components/WhyDidWeActPanel';
-import { VerificationProofPanel } from './components/VerificationProofPanel';
+import { DecisionExplanationPanel } from './components/DecisionExplanationPanel';
+import { FirewallPanel } from './components/FirewallPanel';
 import { FlipFlopHighlight } from './components/FlipFlopHighlight';
 import { ScenarioSimulator } from './components/ScenarioSimulator';
-import { FirewallView } from './components/FirewallView';
+import { VerificationProofPanel } from './components/VerificationProofPanel';
 import { AgentActivityStream } from './components/AgentActivityStream';
 import { PaymentsExplorer } from './components/PaymentsExplorer';
 import { AuditTrailModal } from './components/AuditTrailModal';
 import { PaymentDetailPanel } from './components/PaymentDetailPanel';
 import { AgentDecisionTrace } from './components/AgentDecisionTrace';
-
 
 import {
   fetchMetrics,
@@ -25,6 +24,7 @@ import {
   fetchSystemHealth,
   runDemoScenario,
   runRecovery,
+  resetDemoState,
 } from './api';
 import { SystemMetrics, PaymentItem, ClosedLoopOutcome, PipelineStep, AuditEntry } from './types';
 
@@ -38,122 +38,132 @@ export const App: React.FC = () => {
   const [timeline, setTimeline] = useState<PipelineStep[]>([]);
   const [activeStepIndex, setActiveStepIndex] = useState<number>(-1);
   const [isPipelineRunning, setIsPipelineRunning] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
   const [selectedPaymentId, setSelectedPaymentId] = useState<string | undefined>(undefined);
+  const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Load initial data
   const loadInitialData = async () => {
-    setIsLoading(true);
     try {
-      const [m, p, a, h, ev] = await Promise.all([
-        fetchMetrics().catch(() => null),
-        fetchPayments(50, 0, 'ALL').catch(() => ({ total: 0, payments: [] })),
-        fetchAuditTrail(50).catch(() => []),
-        fetchSystemHealth().catch(() => null),
-        fetchEventTimeline(30).catch(() => ({ total_events: 0, timeline: [] })),
+      setIsLoading(true);
+      const [m, p, a, h, e] = await Promise.allSettled([
+        fetchMetrics(),
+        fetchPayments(50, 0, 'ALL'),
+        fetchAuditTrail(50),
+        fetchSystemHealth(),
+        fetchEventTimeline(20),
       ]);
-      if (m) setMetrics(m);
-      if (p.payments) setPayments(p.payments);
-      if (a) setAuditEntries(a);
-      if (h) setSystemHealth(h);
-      if (ev && ev.timeline) setEventStream(ev.timeline);
+
+      if (m.status === 'fulfilled') setMetrics(m.value);
+      if (p.status === 'fulfilled') setPayments(p.value.payments);
+      if (a.status === 'fulfilled') setAuditEntries(a.value);
+      if (h.status === 'fulfilled') setSystemHealth(h.value);
+      if (e.status === 'fulfilled') {
+        const mappedEvents: TimelineEventItem[] = e.value.timeline.map((evt: any) => ({
+          event_id: evt.event_id || 'evt_unknown',
+          event: evt.event || 'unknown',
+          payment_id: evt.payment_id || 'pay_unknown',
+          order_id: evt.order_id,
+          amount: evt.amount,
+          financial_state: evt.financial_state || 'UNKNOWN',
+          ts: evt.ts || new Date().toISOString(),
+          is_duplicate: evt.is_duplicate,
+        }));
+        setEventStream(mappedEvents);
+      }
     } catch (err) {
-      console.error('Failed to load initial data', err);
+      console.error('Failed to load initial RecoverAI data:', err);
     } finally {
       setIsLoading(false);
     }
   };
-
 
   useEffect(() => {
     loadInitialData();
   }, []);
 
-  // Animate through pipeline stages smoothly
-  const animatePipeline = async (demoTimeline: PipelineStep[], finalOutcome: ClosedLoopOutcome) => {
+  const handleResetDemo = async () => {
+    try {
+      setIsLoading(true);
+      await resetDemoState();
+      setActiveOutcome(null);
+      setTimeline([]);
+      setActiveStepIndex(-1);
+      await loadInitialData();
+    } catch (err) {
+      console.error('Failed to reset demo state:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRunScenario = async (scenarioId: string, customAmount?: number) => {
     setIsPipelineRunning(true);
     setActiveOutcome(null);
-    setTimeline(demoTimeline);
+    setTimeline([]);
+    setActiveStepIndex(0);
 
-    for (let i = 0; i < demoTimeline.length; i++) {
-      setActiveStepIndex(i);
-      // Stagger animation timing for realistic feel
-      await new Promise((resolve) => setTimeout(resolve, 350));
-    }
-
-    setActiveStepIndex(demoTimeline.length);
-    setActiveOutcome(finalOutcome);
-    setIsPipelineRunning(false);
-
-    // Refresh metrics and audit log in background
-    const [m, a] = await Promise.all([
-      fetchMetrics().catch(() => null),
-      fetchAuditTrail(50).catch(() => []),
-    ]);
-    if (m) setMetrics(m);
-    if (a) setAuditEntries(a);
-  };
-
-  // Run Scenario from Simulator
-  const handleRunScenario = async (scenarioId: string, customAmount?: number) => {
     try {
-      setIsLoading(true);
-      const res = await runDemoScenario(scenarioId, customAmount);
-      setSelectedPaymentId(res.outcome.payment_id);
-      await animatePipeline(res.timeline, res.outcome);
+      const resp = await runDemoScenario(scenarioId, customAmount);
+      const outcome = resp.outcome;
+      setActiveOutcome(outcome);
+
+      const mappedTimeline: PipelineStep[] = (resp.timeline || []).map((t: any) => ({
+        step: t.step,
+        status: t.status,
+        timestamp: t.timestamp,
+        message: t.message,
+        details: t.details,
+      }));
+      setTimeline(mappedTimeline);
+
+      // Fast, crisp animation for live demos
+      for (let i = 0; i <= mappedTimeline.length; i++) {
+        setActiveStepIndex(i);
+        await new Promise((resolve) => setTimeout(resolve, 80));
+      }
+
+      await loadInitialData();
     } catch (err) {
-      console.error('Error running scenario', err);
+      console.error('Error running scenario:', err);
     } finally {
-      setIsLoading(false);
+      setIsPipelineRunning(false);
     }
   };
 
-  // Run specific payment from list
   const handleRunPayment = async (paymentId: string) => {
+    setIsPipelineRunning(true);
     try {
-      setIsLoading(true);
-      const res = await runRecovery(paymentId);
-      setSelectedPaymentId(paymentId);
-
-      // Build synthetic timeline for this payment
-      const pTimeline: PipelineStep[] = [
-        { step: 'PAYMENT', status: 'COMPLETED', label: 'Payment Ingested', detail: `ID: ${res.payment_id}` },
-        { step: 'PROVE', status: 'COMPLETED', label: 'Financial State', detail: res.initial_state },
-        { step: 'PRIORITIZE', status: 'COMPLETED', label: 'Recovery Intel', detail: `ENV: ₹${res.expected_net_value || 0}` },
-        { step: 'AGENT', status: 'COMPLETED', label: 'Agent Planner', detail: res.agent_action || 'STOP' },
-        { step: 'FIREWALL', status: 'COMPLETED', label: 'Firewall', detail: res.firewall_decision },
-        { step: 'ACT', status: 'COMPLETED', label: 'Execution', detail: res.execution_status },
-        { step: 'VERIFY', status: 'COMPLETED', label: 'Verified Result', detail: res.verification_state },
-      ];
-
-      await animatePipeline(pTimeline, res);
+      const outcome = await runRecovery(paymentId);
+      setActiveOutcome(outcome);
+      await loadInitialData();
     } catch (err) {
-      console.error('Error running recovery on payment', err);
+      console.error('Error executing recovery:', err);
     } finally {
-      setIsLoading(false);
+      setIsPipelineRunning(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#080b11] text-slate-100 flex flex-col font-sans">
+    <div className="min-h-screen bg-[#080b11] text-slate-100 flex flex-col selection:bg-cyan-500/30 font-sans">
+      {/* Top Header */}
       <Header
         onRefresh={loadInitialData}
         onOpenAudit={() => setIsAuditModalOpen(true)}
+        onResetDemo={handleResetDemo}
         isLoading={isLoading}
       />
 
       <main className="flex-1 max-w-[1600px] w-full mx-auto p-4 sm:p-6 space-y-6">
-        {/* Top Hero KPI Cards */}
+        {/* Module Health Topology Bar */}
+        <SystemHealthPanel health={systemHealth} onRefresh={loadInitialData} />
+
+        {/* Hero KPI Metrics Grid */}
         <HeroMetrics metrics={metrics} />
 
-        {/* System Health & Module Topology Bar (Step 6) */}
-        <SystemHealthPanel health={systemHealth} />
-
-        {/* 5 Scenario Quick Trigger Bar */}
+        {/* Scenario Command Center */}
         <ScenarioSimulator onRunScenario={handleRunScenario} isRunning={isPipelineRunning} />
 
-        {/* Live Recovery Pipeline */}
+        {/* Live Recovery 9-Stage Pipeline */}
         <LivePipeline
           timeline={timeline}
           outcome={activeOutcome}
@@ -161,7 +171,7 @@ export const App: React.FC = () => {
           activeStepIndex={activeStepIndex}
         />
 
-        {/* Agent 6-Stage Decision Trace & Safety Proof */}
+        {/* Agent 6-Stage Decision Trace & Financial Truth Reconciliation */}
         {activeOutcome && (
           <>
             <AgentDecisionTrace outcome={activeOutcome} />
@@ -169,6 +179,11 @@ export const App: React.FC = () => {
           </>
         )}
 
+        {/* Decision Explainability Panel & Model Math Breakdown */}
+        <DecisionExplanationPanel outcome={activeOutcome} />
+
+        {/* Recovery Firewall Rule Inventory & Active Highlighting */}
+        <FirewallPanel outcome={activeOutcome} />
 
         {/* 5 Core Fintech Intelligence Showcase Cards */}
         <FlipFlopHighlight
@@ -176,27 +191,21 @@ export const App: React.FC = () => {
           isRunning={isPipelineRunning}
         />
 
-        {/* Real-Time Event Stream & Webhook Ingestion Feed (Step 6) */}
+        {/* Real-Time Event Stream & Webhook Ingestion Feed */}
         <EventStreamPanel
           events={eventStream}
           onRefresh={loadInitialData}
           isLoading={isLoading}
         />
 
-        {/* Explainability Matrix & Verification Proof Grid */}
+        {/* Verification Proof & Agent Telemetry Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className="lg:col-span-7 space-y-6">
-            {/* Most Important Section: Why Did RecoverAI Act? */}
-            <WhyDidWeActPanel outcome={activeOutcome} />
-            {/* Verification Proof Panel: Agent Claim vs Truth */}
             <VerificationProofPanel outcome={activeOutcome} />
           </div>
 
           <div className="lg:col-span-5 space-y-6 flex flex-col">
-            {/* Agent Structured Activity Telemetry */}
             <AgentActivityStream outcome={activeOutcome} />
-            {/* Firewall Policies View */}
-            <FirewallView />
           </div>
         </div>
 
@@ -208,7 +217,6 @@ export const App: React.FC = () => {
           selectedPaymentId={selectedPaymentId}
           isLoading={isPipelineRunning}
         />
-
       </main>
 
       {/* Footer */}

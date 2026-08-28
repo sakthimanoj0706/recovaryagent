@@ -512,3 +512,36 @@ def get_system_ready() -> Dict[str, Any]:
     }
 
 
+@router.post("/demo/reset")
+def reset_demo_state() -> Dict[str, Any]:
+
+    """
+    Deterministic Demo Reset Endpoint.
+    Resets in-memory event stores, action histories, retry counters, and agent memory for simulation demos.
+    """
+    # 1. Clear Ingestion Processor
+    processor = get_event_processor()
+    processor.clear_store()
+
+    # 2. Clear Orchestrator action caches
+    if hasattr(orchestrator, "_action_history"):
+        orchestrator._action_history.clear()
+    if hasattr(orchestrator, "_memory"):
+        orchestrator._memory.clear()
+    if hasattr(orchestrator, "_run_cache"):
+        orchestrator._run_cache.clear()
+
+    # 3. Reset Mock Gateway
+    gw = get_gateway()
+    if hasattr(gw, "reset_configurations"):
+        gw.reset_configurations()
+
+    return {
+        "status": "SUCCESS",
+        "message": "Demo state reset successfully. Ready for clean demonstration.",
+        "simulation_mode": True,
+        "timestamp": pd.Timestamp.now("UTC").isoformat(),
+    }
+
+
+
