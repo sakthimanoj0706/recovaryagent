@@ -255,14 +255,48 @@ def get_audit_trail(limit: int = 50) -> List[Dict[str, Any]]:
     return [r.to_dict() for r in records_rev]
 
 
+@router.post("/demo/reset")
+def reset_demo_state() -> Dict[str, Any]:
+    """
+    Deterministic Demo Reset Endpoint.
+    Resets in-memory event stores, action histories, retry counters, and agent memory for simulation demos.
+    """
+    # 1. Clear Ingestion Processor
+    processor = get_event_processor()
+    processor.clear_store()
+
+    # 2. Clear Orchestrator action caches
+    if hasattr(orchestrator, "_action_history"):
+        orchestrator._action_history.clear()
+    if hasattr(orchestrator, "_memory"):
+        orchestrator._memory.clear()
+    if hasattr(orchestrator, "_run_cache"):
+        orchestrator._run_cache.clear()
+
+    # 3. Reset Mock Gateway
+    gw = get_gateway()
+    if hasattr(gw, "reset_configurations"):
+        gw.reset_configurations()
+
+    return {
+        "status": "SUCCESS",
+        "message": "Demo state reset successfully. Ready for clean demonstration.",
+        "simulation_mode": True,
+        "timestamp": pd.Timestamp.now("UTC").isoformat(),
+    }
+
+
 class DemoScenarioRequest(BaseModel):
     scenario_id: Optional[str] = None
     custom_amount: Optional[float] = None
 
 
+
 @router.post("/demo/scenario/{scenario_id}")
 @router.post("/demo/{scenario}")
 def run_demo_scenario(scenario: Optional[str] = None, scenario_id: Optional[str] = None, req: Optional[DemoScenarioRequest] = None) -> Dict[str, Any]:
+
+
     """
     Run predefined demonstration scenarios through the actual backend pipeline.
     Returns structured step-by-step telemetry for the animated UI pipeline.
@@ -286,7 +320,7 @@ def run_demo_scenario(scenario: Optional[str] = None, scenario_id: Optional[str]
         title = "Successful Closed-Loop Recovery"
         desc = "Soft Failure -> Payment Link Dispatched -> Confirmed Captured -> Rs. 10,000 Recovered."
 
-    elif sc in ["2", "late_authorization", "flip_flop", "flip"]:
+    elif sc in ["2", "case_a", "late_authorization", "flip_flop", "flip"]:
         pay = PaymentRecord(
             payment_id=f"pay_demo_lateauth_{uuid.uuid4().hex[:6]}",
             order_id="order_demo_202",
@@ -304,7 +338,7 @@ def run_demo_scenario(scenario: Optional[str] = None, scenario_id: Optional[str]
         title = "Late Authorization Flip (FAILED ≠ LOST)"
         desc = "Late capture detected by Financial State Engine. Recovery blocked: Rs. 25,000 correctly withheld."
 
-    elif sc in ["3", "hard_decline", "card_blocked"]:
+    elif sc in ["3", "case_b", "hard_decline", "card_blocked"]:
         pay = PaymentRecord(
             payment_id=f"pay_demo_hard_{uuid.uuid4().hex[:6]}",
             order_id="order_demo_303",
@@ -336,7 +370,7 @@ def run_demo_scenario(scenario: Optional[str] = None, scenario_id: Optional[str]
         title = "Negative Unit Economics Protection (ENV <= 0)"
         desc = "Expected Net Value is negative (cost > expected return). Rs. 500 correctly withheld."
 
-    elif sc in ["5", "verification_catch", "failed_recovery", "unrecovered"]:
+    elif sc in ["5", "case_c", "verification_catch", "failed_recovery", "unrecovered"]:
         pay = PaymentRecord(
             payment_id=f"pay_demo_unrec_{uuid.uuid4().hex[:6]}",
             order_id="order_demo_505",
@@ -351,6 +385,42 @@ def run_demo_scenario(scenario: Optional[str] = None, scenario_id: Optional[str]
         outcome = orchestrator.process_payment(pay, events, force_simulated_success=False)
         title = "Agent Claim ≠ Financial Truth (Verification Catch)"
         desc = "Action dispatched but customer did not pay. Verifier independently proves state remains VERIFIED_LOST."
+
+    elif sc in ["6", "case_d", "uncertain", "pending", "wait"]:
+        pay = PaymentRecord(
+            payment_id=f"pay_demo_unc_{uuid.uuid4().hex[:6]}",
+            order_id="order_demo_606",
+            amount=6000.0 if not req or not req.custom_amount else req.custom_amount,
+            method="upi",
+            customer_segment="standard",
+        )
+        events = [
+            Event(event="payment.created", payment_id=pay.payment_id, order_id=pay.order_id, ts="2026-08-10T10:00:00Z"),
+            Event(event="payment.pending", payment_id=pay.payment_id, order_id=pay.order_id, ts="2026-08-10T10:00:05Z"),
+        ]
+        outcome = orchestrator.process_payment(pay, events)
+        title = "Uncertain State Hold (UNCERTAIN → WAIT)"
+        desc = "Payment in-flight in bank clearing window. Agent halts and waits."
+
+    elif sc in ["7", "case_e", "exception", "mismatch", "escalate"]:
+        pay = PaymentRecord(
+            payment_id=f"pay_demo_exc_{uuid.uuid4().hex[:6]}",
+            order_id="order_demo_707",
+            amount=8500.0 if not req or not req.custom_amount else req.custom_amount,
+            method="card",
+            customer_segment="returning",
+            has_settlement=True,
+            settled_amount=8000.0,
+            settlement_matches_order=False,
+        )
+        events = [
+            Event(event="payment.created", payment_id=pay.payment_id, order_id=pay.order_id, ts="2026-08-10T10:00:00Z"),
+            Event(event="payment.captured", payment_id=pay.payment_id, order_id=pay.order_id, ts="2026-08-10T10:00:05Z"),
+        ]
+        outcome = orchestrator.process_payment(pay, events)
+        title = "Settlement Discrepancy (EXCEPTION → ESCALATE)"
+        desc = "Settlement amount mismatch detected by State Engine. Escalated directly to human operations."
+
 
 
     else:
@@ -511,37 +581,6 @@ def get_system_ready() -> Dict[str, Any]:
         "timestamp": pd.Timestamp.now("UTC").isoformat(),
     }
 
-
-@router.post("/demo/reset")
-def reset_demo_state() -> Dict[str, Any]:
-
-    """
-    Deterministic Demo Reset Endpoint.
-    Resets in-memory event stores, action histories, retry counters, and agent memory for simulation demos.
-    """
-    # 1. Clear Ingestion Processor
-    processor = get_event_processor()
-    processor.clear_store()
-
-    # 2. Clear Orchestrator action caches
-    if hasattr(orchestrator, "_action_history"):
-        orchestrator._action_history.clear()
-    if hasattr(orchestrator, "_memory"):
-        orchestrator._memory.clear()
-    if hasattr(orchestrator, "_run_cache"):
-        orchestrator._run_cache.clear()
-
-    # 3. Reset Mock Gateway
-    gw = get_gateway()
-    if hasattr(gw, "reset_configurations"):
-        gw.reset_configurations()
-
-    return {
-        "status": "SUCCESS",
-        "message": "Demo state reset successfully. Ready for clean demonstration.",
-        "simulation_mode": True,
-        "timestamp": pd.Timestamp.now("UTC").isoformat(),
-    }
 
 
 

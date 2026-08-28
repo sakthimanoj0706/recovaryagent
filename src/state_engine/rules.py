@@ -24,15 +24,18 @@ REFUND_EVENTS = {"payment.refunded"}
 
 
 def parse_timestamp(ts_str: Optional[str]) -> Optional[datetime]:
-    """Parse ISO timestamp safely, returning None if invalid."""
+    """Parse ISO timestamp safely, returning UTC offset-aware datetime or None if invalid."""
     if not ts_str:
         return None
     try:
-        # Handle trailing Z or offsets
-        clean_ts = ts_str.replace("Z", "+00:00")
-        return datetime.fromisoformat(clean_ts)
+        clean_ts = str(ts_str).replace("Z", "+00:00")
+        dt = datetime.fromisoformat(clean_ts)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
     except (ValueError, TypeError):
         return None
+
 
 
 def deduplicate_events(events: List[Event]) -> List[Event]:
