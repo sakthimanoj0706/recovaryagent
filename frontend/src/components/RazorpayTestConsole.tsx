@@ -123,6 +123,88 @@ const RazorpayTestConsole: React.FC<RazorpayTestConsoleProps> = ({ providerMode,
     }
   };
 
+  const loadRazorpayScript = () => {
+    return new Promise((resolve) => {
+      if ((window as any).Razorpay) return resolve(true);
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
+
+  const handleTestCheckout = async () => {
+    if (!paymentId || !amount) return;
+    const amtNum = parseFloat(amount);
+    pushResult({ label: `Web Checkout (${paymentId})`, success: null, message: 'Creating order…', loading: true });
+    
+    try {
+      // 1. Create order
+      const { createCheckoutOrder, verifyCheckoutSignature } = await import('../api');
+      const orderData = await createCheckoutOrder(paymentId, amtNum);
+      
+      if (!orderData.success) {
+        throw new Error(orderData.message || 'Order creation failed');
+      }
+
+      updateLastResult({ success: true, message: `Order created: ${orderData.order_id}`, detail: orderData, loading: true });
+
+      // 2. Load script
+      const scriptLoaded = await loadRazorpayScript();
+      if (!scriptLoaded) throw new Error('Razorpay SDK failed to load');
+
+      // 3. Open checkout
+      const options = {
+        key: orderData.key_id || 'sim_key_id',
+        amount: Math.round(orderData.amount * 100).toString(),
+        currency: orderData.currency,
+        name: 'RecoverAI Sandbox',
+        description: `Test Checkout for ${paymentId}`,
+        order_id: orderData.order_id,
+        handler: async (response: any) => {
+          updateLastResult({ success: true, message: 'Payment returned. Verifying...', detail: response, loading: true });
+          // 4. Verify signature
+          try {
+            const verifyData = await verifyCheckoutSignature(
+              response.razorpay_order_id,
+              response.razorpay_payment_id,
+              response.razorpay_signature
+            );
+            updateLastResult({ 
+              success: verifyData.success, 
+              message: verifyData.message, 
+              detail: { ...response, verified: verifyData.success }, 
+              loading: false 
+            });
+          } catch (e: any) {
+            updateLastResult({ success: false, message: `Verification failed: ${e}`, detail: response, loading: false });
+          }
+        },
+        prefill: {
+          name: 'Test User',
+          email: 'test@recoverai.local',
+          contact: '9999999999'
+        },
+        theme: { color: '#1a73e8' }
+      };
+
+      if (orderData.provider === 'mock') {
+         updateLastResult({ success: true, message: 'Simulation checkout mocked.', loading: false });
+         return;
+      }
+
+      const rzp1 = new (window as any).Razorpay(options);
+      rzp1.on('payment.failed', (response: any) => {
+         updateLastResult({ success: false, message: 'Payment failed at checkout', detail: response.error, loading: false });
+      });
+      rzp1.open();
+
+    } catch (err: any) {
+      updateLastResult({ success: false, message: String(err), loading: false });
+    }
+  };
+
   if (!isVisible) return null;
 
   const isTestMode = providerMode === 'razorpay_test';
@@ -216,6 +298,12 @@ const RazorpayTestConsole: React.FC<RazorpayTestConsoleProps> = ({ providerMode,
           borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600,
         }}>
           🔍 Fetch Payment
+        </button>
+        <button onClick={handleTestCheckout} style={{
+          padding: '8px 16px', background: '#9334e6', color: '#fff', border: 'none',
+          borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600,
+        }}>
+          🛒 Web Checkout
         </button>
       </div>
 

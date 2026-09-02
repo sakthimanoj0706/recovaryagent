@@ -859,6 +859,18 @@ class PaymentLinkRequest(BaseModel):
     description: Optional[str] = None
     correlation_id: Optional[str] = None
 
+class CheckoutOrderRequest(BaseModel):
+    """Request body for creating a Standard Web Checkout order."""
+    payment_id: str
+    amount: float
+    currency: str = "INR"
+    receipt: Optional[str] = None
+
+class CheckoutVerifyRequest(BaseModel):
+    """Request body for verifying checkout response from Razorpay Checkout."""
+    razorpay_order_id: str
+    razorpay_payment_id: str
+    razorpay_signature: str
 
 @router.get("/provider/status")
 def get_provider_status() -> Dict[str, Any]:
@@ -1007,6 +1019,105 @@ def create_provider_payment_link(req: PaymentLinkRequest) -> Dict[str, Any]:
         raise HTTPException(status_code=403, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Payment link creation failed: {exc}")
+
+
+@router.post("/provider/checkout/order")
+def create_provider_checkout_order(req: CheckoutOrderRequest) -> Dict[str, Any]:
+    """
+    Create a standard Web Checkout order through the configured provider.
+    """
+    from gateway.provider_config import LiveModeDisabledError
+    gateway = get_gateway()
+    mode = get_provider_mode()
+
+    if mode == ProviderMode.RAZORPAY_LIVE:
+        raise HTTPException(
+            status_code=403,
+            detail="LIVE PAYMENT EXECUTION IS DISABLED. Razorpay Live mode is blocked.",
+        )
+
+    try:
+        cid = f"cid_checkout_{uuid.uuid4().hex[:8]}"
+        if hasattr(gateway, "create_checkout_order"):
+            result = gateway.create_checkout_order(
+                payment_id=req.payment_id,
+                amount=req.amount,
+                currency=req.currency,
+                receipt=req.receipt,
+                correlation_id=cid,
+            )
+        else:
+            raise HTTPException(status_code=503, detail="Gateway does not support checkout order creation")
+
+        key_id = os.getenv("RAZORPAY_KEY_ID", "") if mode == ProviderMode.RAZORPAY_TEST else "sim_key_id"
+
+        return {
+            "success": result.status.value == "SUCCESS",
+            "mode": mode.value,
+            "provider": result.provider,
+            "order_id": result.metadata.get("provider_order_id"),
+            "amount": result.metadata.get("amount_inr", req.amount) if mode == ProviderMode.RAZORPAY_TEST else req.amount,
+            "currency": result.metadata.get("currency", req.currency),
+            "key_id": key_id,
+            "message": result.message,
+            "simulation": result.simulation,
+            "live_money": False,
+        }
+
+    except LiveModeDisabledError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Checkout order creation failed: {exc}")
+
+
+@router.post("/provider/checkout/verify")
+def verify_provider_checkout(req: CheckoutVerifyRequest) -> Dict[str, Any]:
+    """
+    Verify the frontend Razorpay Checkout signature.
+    Does NOT modify financial state directly.
+    """
+    from gateway.provider_config import LiveModeDisabledError
+    from gateway.razorpay_webhook import RazorpayCheckoutSignatureValidator
+    
+    mode = get_provider_mode()
+    
+    if mode == ProviderMode.SIMULATION:
+        # Mock successful validation for simulation mode
+        return {
+            "success": True,
+            "message": "[SIMULATION] Signature verification skipped/simulated",
+            "provider": "mock",
+        }
+
+    if mode == ProviderMode.RAZORPAY_LIVE:
+        raise HTTPException(
+            status_code=403,
+            detail="LIVE PAYMENT EXECUTION IS DISABLED.",
+        )
+
+    # Perform HMAC-SHA256 signature verification
+    try:
+        is_valid = RazorpayCheckoutSignatureValidator.validate(
+            order_id=req.razorpay_order_id,
+            payment_id=req.razorpay_payment_id,
+            signature=req.razorpay_signature
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Signature verification error: {e}")
+
+    if not is_valid:
+        raise HTTPException(
+            status_code=400,
+            detail="Signature verification failed. Data integrity compromised."
+        )
+
+    return {
+        "success": True,
+        "message": "Signature verified successfully.",
+        "provider": "razorpay_test"
+    }
+
+
 
 
 @router.get("/provider/payment/{payment_id}")

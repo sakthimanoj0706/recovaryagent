@@ -49,6 +49,18 @@ class PaymentGateway(ABC):
         pass
 
     @abstractmethod
+    def create_checkout_order(
+        self,
+        payment_id: str,
+        amount: float,
+        currency: str = "INR",
+        receipt: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> GatewayActionResult:
+        """Generate a provider order specifically for frontend standard web checkout."""
+        pass
+
+    @abstractmethod
     def retry_payment(
         self,
         payment_id: str,

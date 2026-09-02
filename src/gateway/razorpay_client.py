@@ -242,10 +242,10 @@ class RazorpayClient:
                         status_code=status_code,
                         error_code=err_code,
                     )
-                elif status_code == 404:
+                elif status_code == 404 or (status_code == 400 and err_code == "BAD_REQUEST_ERROR" and "does not exist" in err_desc.lower()):
                     raise RazorpayNotFoundError(
-                        f"Razorpay resource not found: {path}",
-                        status_code=404,
+                        f"Razorpay resource not found: {path} ({err_desc})",
+                        status_code=status_code,
                         error_code=err_code,
                     )
                 elif status_code == 429:
@@ -401,6 +401,32 @@ class RazorpayClient:
             retry=False,  # DO NOT retry state-changing operations
         )
         return RazorpayPaymentLink(**data)
+
+    def create_order(
+        self,
+        amount_paise: int,
+        currency: str = "INR",
+        receipt: Optional[str] = None,
+        correlation_id: Optional[str] = None,
+    ) -> RazorpayOrder:
+        """
+        Create a new order for Razorpay Checkout.
+        """
+        body = {
+            "amount": amount_paise,
+            "currency": currency,
+        }
+        if receipt:
+            body["receipt"] = receipt
+            
+        data = self._request(
+            "POST",
+            "orders",
+            body=body,
+            correlation_id=correlation_id,
+            retry=False,
+        )
+        return RazorpayOrder(**data)
 
 
 __all__ = [

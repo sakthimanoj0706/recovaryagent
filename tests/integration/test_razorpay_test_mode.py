@@ -83,7 +83,7 @@ class TestRazorpayPaymentLinkCreation:
         assert link.amount == 100
         assert link.currency == "INR"
         assert link.is_active is True
-        print(f"\n[INTEGRATION] Created payment link: {link.id} → {link.short_url}")
+        print(f"\n[INTEGRATION] Created payment link: {link.id} -> {link.short_url}")
 
 
 @pytest.mark.razorpay_integration

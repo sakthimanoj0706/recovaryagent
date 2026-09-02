@@ -105,6 +105,38 @@ class RazorpayWebhookSignatureValidator:
         return is_valid
 
 
+class RazorpayCheckoutSignatureValidator:
+    """
+    Validates Razorpay Standard Web Checkout frontend response signatures.
+    """
+    @staticmethod
+    def validate(
+        order_id: str,
+        payment_id: str,
+        signature: str,
+        key_secret: Optional[str] = None
+    ) -> bool:
+        """
+        Validate the signature returned by checkout.js:
+        HMAC-SHA256(order_id + "|" + payment_id, key_secret)
+        """
+        if not signature or not order_id or not payment_id:
+            return False
+
+        secret = key_secret or os.getenv("RAZORPAY_KEY_SECRET", "")
+        if not secret:
+            raise RazorpaySignatureError("RAZORPAY_KEY_SECRET is not configured.")
+
+        payload = f"{order_id}|{payment_id}"
+        expected_sig = hmac.new(
+            secret.encode("utf-8"),
+            payload.encode("utf-8"),
+            hashlib.sha256
+        ).hexdigest()
+
+        return hmac.compare_digest(expected_sig, signature)
+
+
 class RazorpayWebhookNormalizer:
     """
     Converts Razorpay webhook events into RecoverAI's internal WebhookPayload model.

@@ -142,6 +142,29 @@ class RazorpayGatewayAdapter(PaymentGateway):
                 exec_id, now_iso, correlation_id
             )
 
+    def create_checkout_order(
+        self,
+        payment_id: str,
+        amount: float,
+        currency: str = "INR",
+        receipt: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        correlation_id: Optional[str] = None,
+    ) -> GatewayActionResult:
+        exec_id = f"rzp_order_{uuid.uuid4().hex[:8]}"
+        now_iso = datetime.now(timezone.utc).isoformat()
+        
+        if self.provider_mode == ProviderMode.SIMULATION:
+            return self._simulate_checkout_order(
+                payment_id, amount, currency, receipt, exec_id, now_iso, metadata
+            )
+        elif self.provider_mode == ProviderMode.RAZORPAY_TEST:
+            return self._real_create_checkout_order(
+                payment_id, amount, currency, receipt, metadata, exec_id, now_iso, correlation_id
+            )
+
+        raise LiveModeDisabledError("LIVE PAYMENT EXECUTION IS DISABLED.")
+
         # Live mode — hard block (should never reach here due to constructor check)
         raise LiveModeDisabledError("LIVE PAYMENT EXECUTION IS DISABLED.")
 
@@ -173,6 +196,93 @@ class RazorpayGatewayAdapter(PaymentGateway):
                 **(metadata or {}),
             },
         )
+
+    def _simulate_checkout_order(
+        self, payment_id: str, amount: float, currency: str, receipt: Optional[str],
+        exec_id: str, now_iso: str, metadata: Optional[Dict[str, Any]],
+    ) -> GatewayActionResult:
+        short_id = payment_id.replace("pay_", "")[:10]
+        order_id = f"order_sim_{short_id}"
+        return GatewayActionResult(
+            execution_id=exec_id,
+            payment_id=payment_id,
+            order_id=order_id,
+            action="CHECKOUT_ORDER",
+            status=GatewayActionStatus.SUCCESS,
+            provider="razorpay",
+            simulation=True,
+            timestamp=now_iso,
+            message=f"[SIMULATION] Razorpay checkout order created: {order_id}",
+            metadata={
+                "provider_order_id": order_id,
+                "amount": amount,
+                "currency": currency,
+                "provider_mode": "simulation",
+                **(metadata or {}),
+            },
+        )
+
+    def _real_create_checkout_order(
+        self, payment_id: str, amount: float, currency: str, receipt: Optional[str],
+        metadata: Optional[Dict[str, Any]], exec_id: str, now_iso: str, correlation_id: Optional[str],
+    ) -> GatewayActionResult:
+        from .razorpay_client import RazorpayClientError
+        try:
+            amount_paise = int(round(amount * 100))
+            client = self._get_client()
+            order = client.create_order(
+                amount_paise=amount_paise,
+                currency=currency,
+                receipt=receipt or f"rcpt_{payment_id[:10]}",
+                correlation_id=correlation_id
+            )
+            
+            logger.info(
+                "Razorpay checkout order created (TEST MODE)",
+                extra={
+                    "provider": "razorpay",
+                    "mode": "test",
+                    "operation": "create_checkout_order",
+                    "payment_id": payment_id,
+                    "order_id": order.id,
+                    "correlation_id": correlation_id,
+                    "live_money": False,
+                }
+            )
+            
+            return GatewayActionResult(
+                execution_id=exec_id,
+                payment_id=payment_id,
+                order_id=order.id,
+                action="CHECKOUT_ORDER",
+                status=GatewayActionStatus.SUCCESS,
+                provider="razorpay",
+                simulation=False,
+                timestamp=now_iso,
+                message=f"[RAZORPAY TEST] Checkout order created: {order.id}",
+                metadata={
+                    "provider_order_id": order.id,
+                    "amount_inr": amount,
+                    "currency": currency,
+                    "provider_mode": "razorpay_test",
+                    "live_money": False,
+                    **(metadata or {}),
+                }
+            )
+        except RazorpayClientError as exc:
+            logger.warning("Razorpay checkout order creation failed", extra={"error": str(exc)})
+            return GatewayActionResult(
+                execution_id=exec_id,
+                payment_id=payment_id,
+                order_id=None,
+                action="CHECKOUT_ORDER",
+                status=GatewayActionStatus.FAILURE,
+                provider="razorpay",
+                simulation=False,
+                timestamp=now_iso,
+                message=f"[RAZORPAY TEST ERROR] {exc}",
+                metadata={"error": str(exc), "provider_mode": "razorpay_test"}
+            )
 
     def _real_create_payment_link(
         self,

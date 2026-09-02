@@ -45,6 +45,38 @@ class MockPaymentGateway(PaymentGateway):
             return force_status
         return self._action_configs.get(payment_id, self.default_outcome)
 
+    def create_checkout_order(
+        self,
+        payment_id: str,
+        amount: float,
+        currency: str = "INR",
+        receipt: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        force_status: Optional[GatewayActionStatus] = None,
+    ) -> GatewayActionResult:
+        exec_id = f"mock_order_{uuid.uuid4().hex[:8]}"
+        now_iso = datetime.now(timezone.utc).isoformat()
+        status = self._determine_status(payment_id, force_status)
+        order_id = f"order_mock_{uuid.uuid4().hex[:8]}"
+        
+        return GatewayActionResult(
+            execution_id=exec_id,
+            payment_id=payment_id,
+            order_id=order_id,
+            action="CHECKOUT_ORDER",
+            status=status,
+            provider="mock",
+            simulation=True,
+            timestamp=now_iso,
+            message="[MOCK] Checkout Order generated" if status == GatewayActionStatus.SUCCESS else "[MOCK] Checkout Order failed",
+            metadata={
+                "amount": amount,
+                "currency": currency,
+                "receipt": receipt,
+                **(metadata or {}),
+            },
+        )
+
     def create_payment_link(
         self,
         payment_id: str,

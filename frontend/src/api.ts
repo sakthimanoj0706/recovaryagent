@@ -235,3 +235,26 @@ export async function fetchProviderOrder(orderId: string): Promise<any> {
   return res.json();
 }
 
+export async function createCheckoutOrder(paymentId: string, amount: number): Promise<any> {
+  const res = await fetch(`${API_BASE}/provider/checkout/order`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ payment_id: paymentId, amount }),
+  });
+  if (!res.ok) throw new Error('Failed to create checkout order');
+  return res.json();
+}
+
+export async function verifyCheckoutSignature(orderId: string, paymentId: string, signature: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/provider/checkout/verify`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      razorpay_order_id: orderId,
+      razorpay_payment_id: paymentId,
+      razorpay_signature: signature
+    }),
+  });
+  if (!res.ok) throw new Error('Failed to verify checkout signature');
+  return res.json();
+}
