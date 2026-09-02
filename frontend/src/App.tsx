@@ -15,6 +15,8 @@ import { PaymentsExplorer } from './components/PaymentsExplorer';
 import { AuditTrailModal } from './components/AuditTrailModal';
 import { PaymentDetailPanel } from './components/PaymentDetailPanel';
 import { AgentDecisionTrace } from './components/AgentDecisionTrace';
+import { BenchmarkPanel } from './components/BenchmarkPanel';
+
 
 import {
   fetchMetrics,
@@ -209,6 +211,9 @@ export const App: React.FC = () => {
           </div>
         </div>
 
+        {/* Economic Impact Benchmark & ROI Engine (Step 11) */}
+        <BenchmarkPanel />
+
         {/* Payments Explorer Full Table */}
         <PaymentsExplorer
           payments={payments}
@@ -217,6 +222,7 @@ export const App: React.FC = () => {
           selectedPaymentId={selectedPaymentId}
           isLoading={isPipelineRunning}
         />
+
       </main>
 
       {/* Footer */}

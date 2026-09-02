@@ -575,11 +575,81 @@ def get_system_ready() -> Dict[str, Any]:
             "state_engine": is_state_engine_ready,
             "firewall": True,
             "gateway": is_gateway_ready,
-            "audit": is_audit_ready,
             "model": is_model_ready,
         },
         "timestamp": pd.Timestamp.now("UTC").isoformat(),
     }
+
+
+# =========================================================================
+# BENCHMARK & ROI ENGINE ENDPOINTS (STEP 11)
+# =========================================================================
+from benchmark import BenchmarkConfig, BenchmarkEngine, BenchmarkComparison
+
+
+benchmark_engine = BenchmarkEngine()
+
+
+class BenchmarkRunRequest(BaseModel):
+    payments: int = 1000
+    seed: int = 42
+
+
+@router.post("/benchmark/run")
+def run_benchmark_endpoint(req: BenchmarkRunRequest) -> Dict[str, Any]:
+    """
+    Run on-demand comparative economic benchmark between Naive baseline and RecoverAI.
+    """
+    payments_count = min(max(10, req.payments), 50000)  # Safe bounds
+    config = BenchmarkConfig(payments=payments_count, seed=req.seed)
+    comparison = benchmark_engine.run_benchmark(config)
+    return comparison.model_dump()
+
+
+@router.get("/benchmark/latest")
+def get_latest_benchmark_endpoint() -> Dict[str, Any]:
+    """
+    Retrieve the most recently executed benchmark comparison result.
+    """
+    if benchmark_engine.latest_comparison is None:
+        # Run a fast 1,000-payment baseline on first request
+        comparison = benchmark_engine.run_benchmark(BenchmarkConfig(payments=1000, seed=42))
+        return comparison.model_dump()
+    return benchmark_engine.latest_comparison.model_dump()
+
+
+@router.get("/benchmark/compare")
+def get_benchmark_compare_endpoint() -> Dict[str, Any]:
+    """
+    Formatted comparative data payload for Command Center UI visualization.
+    """
+    comp = benchmark_engine.latest_comparison
+    if comp is None:
+        comp = benchmark_engine.run_benchmark(BenchmarkConfig(payments=1000, seed=42))
+
+    return {
+        "benchmark_id": comp.benchmark_id,
+        "timestamp": comp.timestamp,
+        "payments": comp.config.payments,
+        "seed": comp.config.seed,
+        "simulation_label": comp.simulation_label,
+        "executive_summary": comp.executive_summary,
+        "key_findings": comp.key_findings,
+        "archetype_breakdown": comp.archetype_breakdown,
+        "deltas": {
+            "recovered_value_lift_pct": comp.recovered_value_lift_pct,
+            "net_value_lift_amount": comp.net_value_lift_amount,
+            "net_value_lift_pct": comp.net_value_lift_pct,
+            "unnecessary_actions_reduction_pct": comp.unnecessary_actions_reduction_pct,
+            "gateway_operations_reduction_pct": comp.gateway_operations_reduction_pct,
+            "operating_cost_reduction_pct": comp.operating_cost_reduction_pct,
+            "false_recoveries_eliminated": comp.false_recoveries_eliminated,
+            "double_recoveries_prevented": comp.double_recoveries_prevented,
+        },
+        "naive": comp.naive.model_dump(),
+        "recoverai": comp.recoverai.model_dump(),
+    }
+
 
 
 

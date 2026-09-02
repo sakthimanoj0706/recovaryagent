@@ -81,4 +81,27 @@ export async function postPaymentWebhook(payload: any): Promise<any> {
   return res.json();
 }
 
+export async function runBenchmark(payments = 1000, seed = 42): Promise<any> {
+  const res = await fetch(`${API_BASE}/benchmark/run`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ payments, seed }),
+  });
+  if (!res.ok) throw new Error('Failed to run benchmark');
+  return res.json();
+}
+
+export async function fetchLatestBenchmark(): Promise<any> {
+  const res = await fetch(`${API_BASE}/benchmark/latest`);
+  if (!res.ok) throw new Error('Failed to fetch latest benchmark');
+  return res.json();
+}
+
+export async function fetchBenchmarkCompare(): Promise<any> {
+  const res = await fetch(`${API_BASE}/benchmark/compare`);
+  if (!res.ok) throw new Error('Failed to fetch benchmark comparison');
+  return res.json();
+}
+
+
 
