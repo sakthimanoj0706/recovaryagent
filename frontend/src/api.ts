@@ -142,16 +142,55 @@ export async function runPolicyBreakEven(payload: any): Promise<any> {
   return res.json();
 }
 
-export async function runPolicyMonteCarlo(payload: any): Promise<any> {
+export async function runPolicyMonteCarlo(config: any): Promise<any> {
   const res = await fetch(`${API_BASE}/policy-lab/monte-carlo`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(config),
   });
   if (!res.ok) throw new Error('Failed to run Monte Carlo simulation');
   return res.json();
 }
 
+// =========================================================================
+// RECOVERY DECISION REPLAY APIS (STEP 13)
+// =========================================================================
+export async function fetchReplayPresets(): Promise<any> {
+  const res = await fetch(`${API_BASE}/replay/presets`);
+  if (!res.ok) throw new Error('Failed to fetch replay presets');
+  return res.json();
+}
 
+export async function fetchLatestReplay(): Promise<any> {
+  const res = await fetch(`${API_BASE}/replay/latest`);
+  if (!res.ok) throw new Error('Failed to fetch latest decision replay');
+  return res.json();
+}
 
+export async function runDecisionReplay(preset_key?: string, payment?: any, events?: any): Promise<any> {
+  const res = await fetch(`${API_BASE}/replay/run`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ preset_key, payment, events, simulation_only: true }),
+  });
+  if (!res.ok) throw new Error('Failed to run decision replay');
+  return res.json();
+}
 
+export async function fetchReplayGraph(runId: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/replay/${runId}/graph`);
+  if (!res.ok) throw new Error('Failed to fetch replay graph');
+  return res.json();
+}
+
+export async function fetchReplayExplanation(runId: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/replay/${runId}/explanation`);
+  if (!res.ok) throw new Error('Failed to fetch replay explanation');
+  return res.json();
+}
+
+export async function fetchReplayEvidence(runId: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/replay/${runId}/evidence`);
+  if (!res.ok) throw new Error('Failed to fetch replay evidence');
+  return res.json();
+}

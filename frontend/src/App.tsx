@@ -16,6 +16,7 @@ import { AuditTrailModal } from './components/AuditTrailModal';
 import { PaymentDetailPanel } from './components/PaymentDetailPanel';
 import { BenchmarkPanel } from './components/BenchmarkPanel';
 import { PolicyLab } from './components/PolicyLab';
+import { DecisionReplay } from './components/DecisionReplay';
 
 
 
@@ -218,7 +219,11 @@ export const App: React.FC = () => {
         {/* Recovery Policy Lab & What-If Economic Simulator (Step 12) */}
         <PolicyLab />
 
+        {/* Recovery Decision Replay & Evidence Graph (Step 13) */}
+        <DecisionReplay />
+
         {/* Payments Explorer Full Table */}
+
 
         <PaymentsExplorer
           payments={payments}

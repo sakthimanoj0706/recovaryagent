@@ -730,6 +730,109 @@ def get_policy_lab_run_endpoint(run_id: str) -> Dict[str, Any]:
     return result.model_dump()
 
 
+# =========================================================================
+# RECOVERY DECISION REPLAY & EVIDENCE GRAPH (STEP 13)
+# =========================================================================
+from replay import (
+    ReplayRequest,
+    ReplayService,
+    verify_graph_integrity,
+)
+
+replay_service = ReplayService()
+
+
+@router.post("/replay/run")
+def run_decision_replay_endpoint(req: ReplayRequest) -> Dict[str, Any]:
+    """
+    Execute deterministic transaction-level decision replay and evidence graph generation.
+    Strictly SIMULATION ONLY.
+    """
+    replay = replay_service.replay_custom(req)
+    return {
+        "replay": replay.model_dump(),
+        "simulation_flag": True,
+    }
+
+
+@router.get("/replay/presets")
+def get_replay_presets_endpoint() -> List[Dict[str, Any]]:
+    """
+    Retrieve list of built-in synthetic test fixtures for UI case selection.
+    """
+    return replay_service.get_preset_catalog()
+
+
+@router.get("/replay/latest")
+def get_latest_replay_endpoint() -> Dict[str, Any]:
+    """
+    Retrieve the most recently executed decision replay.
+    """
+    replay = replay_service.get_latest_or_default()
+    return {
+        "replay": replay.model_dump(),
+        "simulation_flag": True,
+    }
+
+
+@router.get("/replay/{run_id}")
+def get_replay_by_id_endpoint(run_id: str) -> Dict[str, Any]:
+    """
+    Retrieve a specific decision replay by its run_id or replay_id.
+    """
+    replay = replay_service.get_replay(run_id)
+    if replay is None:
+        raise HTTPException(status_code=404, detail=f"Replay run '{run_id}' not found")
+    return {
+        "replay": replay.model_dump(),
+        "simulation_flag": True,
+    }
+
+
+@router.get("/replay/{run_id}/graph")
+def get_replay_graph_endpoint(run_id: str) -> Dict[str, Any]:
+    """
+    Retrieve the Directed Acyclic Evidence Graph for a replay run.
+    """
+    replay = replay_service.get_replay(run_id)
+    if replay is None:
+        raise HTTPException(status_code=404, detail=f"Replay run '{run_id}' not found")
+    is_valid, msg = verify_graph_integrity(replay.evidence_graph)
+    return {
+        "graph": replay.evidence_graph.model_dump(),
+        "canonical_hash": replay.evidence_hash,
+        "integrity_verified": is_valid,
+        "integrity_message": msg,
+    }
+
+
+@router.get("/replay/{run_id}/explanation")
+def get_replay_explanation_endpoint(run_id: str) -> Dict[str, Any]:
+    """
+    Retrieve the human-readable decision provenance explanation.
+    """
+    replay = replay_service.get_replay(run_id)
+    if replay is None:
+        raise HTTPException(status_code=404, detail=f"Replay run '{run_id}' not found")
+    return replay.provenance.model_dump()
+
+
+@router.get("/replay/{run_id}/evidence")
+def get_replay_evidence_endpoint(run_id: str) -> Dict[str, Any]:
+    """
+    Retrieve exact financial proof, candidate matrix, and accounting conservation data.
+    """
+    replay = replay_service.get_replay(run_id)
+    if replay is None:
+        raise HTTPException(status_code=404, detail=f"Replay run '{run_id}' not found")
+    return {
+        "financial_proof": replay.financial_proof.model_dump(),
+        "candidate_matrix": [c.model_dump() for c in replay.candidate_matrix],
+        "audit_reference": replay.audit_reference,
+    }
+
+
+
 
 
 
