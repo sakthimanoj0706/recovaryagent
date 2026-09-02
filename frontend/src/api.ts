@@ -103,5 +103,55 @@ export async function fetchBenchmarkCompare(): Promise<any> {
   return res.json();
 }
 
+// =========================================================================
+// POLICY LAB APIS (STEP 12)
+// =========================================================================
+export async function runPolicyLab(env?: any, custom_policy?: any): Promise<any> {
+  const res = await fetch(`${API_BASE}/policy-lab/run`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ env, custom_policy }),
+  });
+  if (!res.ok) throw new Error('Failed to run Policy Lab simulation');
+  return res.json();
+}
+
+export async function fetchLatestPolicyLab(): Promise<any> {
+  const res = await fetch(`${API_BASE}/policy-lab/latest`);
+  if (!res.ok) throw new Error('Failed to fetch latest Policy Lab run');
+  return res.json();
+}
+
+export async function runPolicySensitivity(payload: any): Promise<any> {
+  const res = await fetch(`${API_BASE}/policy-lab/sensitivity`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error('Failed to run sensitivity analysis');
+  return res.json();
+}
+
+export async function runPolicyBreakEven(payload: any): Promise<any> {
+  const res = await fetch(`${API_BASE}/policy-lab/break-even`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error('Failed to run break-even analysis');
+  return res.json();
+}
+
+export async function runPolicyMonteCarlo(payload: any): Promise<any> {
+  const res = await fetch(`${API_BASE}/policy-lab/monte-carlo`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error('Failed to run Monte Carlo simulation');
+  return res.json();
+}
+
+
 
 

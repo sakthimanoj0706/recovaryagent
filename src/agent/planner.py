@@ -28,6 +28,9 @@ from .llm import BaseLLMClient, DeterministicFallbackLLMClient, get_default_llm_
 logger = logging.getLogger("recoverai.agent.planner")
 
 
+_DEFAULT_SENTINEL = object()
+
+
 class AgenticRecoveryPlanner:
     """
     Agentic Recovery Planner.
@@ -35,8 +38,12 @@ class AgenticRecoveryPlanner:
     and validating against deterministic policy rules.
     """
 
-    def __init__(self, llm_client: Optional[BaseLLMClient] = None):
-        self.llm_client = llm_client if llm_client is not None else get_default_llm_client()
+    def __init__(self, llm_client: Any = _DEFAULT_SENTINEL):
+        if llm_client is _DEFAULT_SENTINEL:
+            self.llm_client = get_default_llm_client()
+        else:
+            self.llm_client = llm_client
+
 
     def plan_recovery(self, context: RecoveryContext) -> Optional[AgentRecommendation]:
         """

@@ -652,5 +652,85 @@ def get_benchmark_compare_endpoint() -> Dict[str, Any]:
 
 
 
+# =========================================================================
+# POLICY LAB & WHAT-IF ECONOMIC SIMULATOR (STEP 12)
+# =========================================================================
+from policy_lab import (
+    EconomicEnvironment,
+
+    CustomRecoveryPolicy,
+    PolicyLabService,
+    SensitivityRequest,
+    BreakEvenRequest,
+    MonteCarloConfig,
+)
+
+policy_lab_service = PolicyLabService()
+
+
+class PolicyLabRunRequestBody(BaseModel):
+    env: Optional[EconomicEnvironment] = None
+    custom_policy: Optional[CustomRecoveryPolicy] = None
+
+
+@router.post("/policy-lab/run")
+def run_policy_lab_endpoint(req: PolicyLabRunRequestBody) -> Dict[str, Any]:
+    """
+    Run 3-way comparative simulation (Naive vs RecoverAI vs Custom Policy)
+    under configurable economic conditions.
+    """
+    result = policy_lab_service.run_simulation(env=req.env, custom_policy=req.custom_policy)
+    return result.model_dump()
+
+
+@router.post("/policy-lab/sensitivity")
+def run_sensitivity_endpoint(req: SensitivityRequest) -> Dict[str, Any]:
+    """
+    Execute one-parameter sensitivity sweep across multiple economic cost points.
+    """
+    result = policy_lab_service.run_sensitivity(req)
+    return result.model_dump()
+
+
+@router.post("/policy-lab/break-even")
+def run_break_even_endpoint(req: BreakEvenRequest) -> Dict[str, Any]:
+    """
+    Discover deterministic economic break-even crossover points.
+    """
+    result = policy_lab_service.find_break_even(req)
+    return result.model_dump()
+
+
+@router.post("/policy-lab/monte-carlo")
+def run_monte_carlo_endpoint(req: MonteCarloConfig) -> Dict[str, Any]:
+    """
+    Run stochastic multi-population Monte Carlo simulation across seed sequence.
+    """
+    result = policy_lab_service.run_monte_carlo(req)
+    return result.model_dump()
+
+
+@router.get("/policy-lab/latest")
+def get_latest_policy_lab_endpoint() -> Dict[str, Any]:
+    """
+    Retrieve the most recent Policy Lab simulation result or run default 1k population.
+    """
+    result = policy_lab_service.get_latest_or_default()
+    return result.model_dump()
+
+
+@router.get("/policy-lab/{run_id}")
+def get_policy_lab_run_endpoint(run_id: str) -> Dict[str, Any]:
+    """
+    Retrieve a specific simulation run by its run_id.
+    """
+    result = policy_lab_service.get_run(run_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Policy lab run '{run_id}' not found")
+    return result.model_dump()
+
+
+
+
 
 

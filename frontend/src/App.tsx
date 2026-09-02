@@ -14,8 +14,9 @@ import { AgentActivityStream } from './components/AgentActivityStream';
 import { PaymentsExplorer } from './components/PaymentsExplorer';
 import { AuditTrailModal } from './components/AuditTrailModal';
 import { PaymentDetailPanel } from './components/PaymentDetailPanel';
-import { AgentDecisionTrace } from './components/AgentDecisionTrace';
 import { BenchmarkPanel } from './components/BenchmarkPanel';
+import { PolicyLab } from './components/PolicyLab';
+
 
 
 import {
@@ -214,7 +215,11 @@ export const App: React.FC = () => {
         {/* Economic Impact Benchmark & ROI Engine (Step 11) */}
         <BenchmarkPanel />
 
+        {/* Recovery Policy Lab & What-If Economic Simulator (Step 12) */}
+        <PolicyLab />
+
         {/* Payments Explorer Full Table */}
+
         <PaymentsExplorer
           payments={payments}
           onSelectPayment={(id) => setSelectedPaymentId(id)}
