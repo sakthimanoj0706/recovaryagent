@@ -197,8 +197,9 @@ def test_gateway_cannot_bypass_firewall(processor):
 
 
 # 8. test_llm_cannot_execute_gateway_action
-def test_llm_cannot_execute_gateway_action():
+def test_llm_cannot_execute_gateway_action(monkeypatch):
     # Verify that Gateway can only be invoked by deterministic code, not LLM prompts
+    monkeypatch.setenv("RECOVERAI_PROVIDER_MODE", "simulation")
     gw = get_gateway()
     assert isinstance(gw, PaymentGateway)
     assert gw.is_simulation is True

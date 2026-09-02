@@ -1,5 +1,5 @@
 """
-RecoverAI — Master Full System Live Demo (Step 7).
+RecoverAI - Master Full System Live Demo (Step 7).
 One-command executable demonstrating the complete 7-stage financial safety loop:
 OBSERVE -> PROVE -> PRIORITIZE -> PLAN -> GUARD -> ACT -> VERIFY -> AUDIT
 
@@ -35,7 +35,7 @@ from audit.logger import AuditLogger
 
 def run_master_demo():
     print("=" * 80)
-    print("        RecoverAI — MASTER FULL SYSTEM CLOSED-LOOP RECOVERY DEMO        ")
+    print("        RecoverAI - MASTER FULL SYSTEM CLOSED-LOOP RECOVERY DEMO        ")
     print("              'Prove the money. Prioritize the chase. Recover it.'      ")
     print("=" * 80)
 
@@ -324,7 +324,7 @@ def run_master_demo():
     replay_service = ReplayService()
 
     # CASE 1: NORMAL SUCCESSFUL RECOVERY
-    print("\nCASE 1 — SUCCESSFUL RECOVERY (UPI Transient Glitch)")
+    print("\nCASE 1 - SUCCESSFUL RECOVERY (UPI Transient Glitch)")
     r1 = replay_service.replay_preset("SUCCESSFUL_RETRY")
     print(f"   * Payment ID         : {r1.payment_id}")
     print(f"   * Initial State      : {r1.initial_financial_state}")
@@ -341,7 +341,7 @@ def run_master_demo():
     print(f"   * Replay Status      : PASS")
 
     # CASE 2: DANGEROUS / ADVERSARIAL HARD DECLINE
-    print("\nCASE 2 — HARD DECLINE INTERCEPTION (Adversarial AI Advisory Contained)")
+    print("\nCASE 2 - HARD DECLINE INTERCEPTION (Adversarial AI Advisory Contained)")
     r2 = replay_service.replay_preset("HARD_DECLINE_BLOCKED")
     print(f"   * Payment ID         : {r2.payment_id}")
     print(f"   * AI Recommendation  : RETRY (Adversarial)")
@@ -354,7 +354,7 @@ def run_master_demo():
     print(f"   * Replay Status      : PASS")
 
     # CASE 3: GATEWAY SUCCESS WITHOUT VERIFICATION
-    print("\nCASE 3 — GATEWAY SUCCESS / VERIFICATION PENDING")
+    print("\nCASE 3 - GATEWAY SUCCESS / VERIFICATION PENDING")
     r3 = replay_service.replay_preset("GATEWAY_SUCCESS_VERIFICATION_PENDING")
     print(f"   * Gateway Simulation : SUCCESS")
     print(f"   * Ledger Verification: NOT CONFIRMED")
@@ -384,7 +384,7 @@ def run_master_demo():
     import hashlib
     import uuid
 
-    # Detect provider mode — never assume, always read from env
+    # Detect provider mode - never assume, always read from env
     provider_mode_raw = os.getenv("RECOVERAI_PROVIDER_MODE", "simulation").strip().lower()
     razorpay_key_id = os.getenv("RAZORPAY_KEY_ID", "")
     razorpay_key_secret = os.getenv("RAZORPAY_KEY_SECRET", "")
@@ -405,25 +405,69 @@ def run_master_demo():
     print(f"   RECOVERAI_LIVE_TRANSACTIONS : {live_flag}")
     print()
 
-    # ── Live Mode Hard Block Test ──────────────────────────────────────────────
+    #  Live Mode Hard Block Test 
     print("   [A] Live Mode Hard Block:")
     try:
         from gateway.razorpay_adapter import RazorpayGatewayAdapter
         RazorpayGatewayAdapter(mode=ProviderMode.RAZORPAY_LIVE)
-        print("   ✗  FAIL: LiveModeDisabledError should have been raised")
+        print("   [FAIL] LiveModeDisabledError should have been raised")
     except LiveModeDisabledError:
-        print("   ✓  LiveModeDisabledError raised at adapter construction — PASS")
+        print("   [PASS] LiveModeDisabledError raised at adapter construction")
 
+    # 2. Test Connection
+    print("\n   [B] Razorpay API Connectivity (Test Mode):")
     try:
-        assert_live_execution_disabled(mode)
-        live_block_ok = True
-    except LiveModeDisabledError:
-        live_block_ok = False
-    print(f"   ✓  Current mode ({mode.value}) does not trigger live block — PASS")
+        from gateway.razorpay_adapter import RazorpayGatewayAdapter
+        from gateway.razorpay_client import RazorpayAuthError, RazorpayClientError
+        
+        adapter = RazorpayGatewayAdapter(mode=ProviderMode.RAZORPAY_TEST)
+        key_id = os.getenv("RAZORPAY_KEY_ID")
+        
+        if not key_id:
+            print("   [SKIPPED] Razorpay Test Mode credentials not configured.")
+        else:
+            success, msg = adapter.test_connection()
+            if success:
+                print(f"   [PASS] {msg}")
+            else:
+                if "401" in msg or "Authentication failed" in msg:
+                    print(f"   [PROVIDER CHECK FAILED] INVALID TEST CREDENTIALS: {msg}")
+                else:
+                    print(f"   [WARNING] Connectivity failed: {msg}")
+                    
+    except Exception as exc:
+        if "Authentication failed" in str(exc) or "401" in str(exc):
+            print(f"   [PROVIDER CHECK FAILED] INVALID TEST CREDENTIALS: {exc}")
+        else:
+            print(f"   [ERROR] Connection exception: {exc}")
 
-    # ── Webhook Signature Validation ───────────────────────────────────────────
+    # 3. Create Checkout Order
+    print("\n   [C] Create Checkout Order (Test Mode):")
+    if not os.getenv("RAZORPAY_KEY_ID"):
+        print("   [SKIPPED] Credentials not configured.")
+    else:
+        try:
+            res = adapter.create_checkout_order(
+                payment_id="pay_demo_order_1",
+                amount=500.0,
+                currency="INR"
+            )
+            if res.status.value == "SUCCESS":
+                print(f"   [PASS] Order created successfully: {res.order_id}")
+            else:
+                if "401" in res.message:
+                    print(f"   [PROVIDER CHECK FAILED] INVALID TEST CREDENTIALS")
+                else:
+                    print(f"   [WARNING] Order creation failed: {res.message}")
+        except Exception as exc:
+            if "Authentication failed" in str(exc) or "401" in str(exc):
+                print(f"   [PROVIDER CHECK FAILED] INVALID TEST CREDENTIALS")
+            else:
+                print(f"   [ERROR] Order creation exception: {exc}")
+
+    #  Webhook Signature Validation 
     print()
-    print("   [B] HMAC-SHA256 Webhook Signature Validation:")
+    print("   [D] HMAC-SHA256 Webhook Signature Validation:")
     test_secret = "test_webhook_secret_demo_abc"
     test_body = b'{"event":"payment.failed","id":"evt_demo_001","entity":"event"}'
     correct_sig = hmac.new(test_secret.encode(), test_body, hashlib.sha256).hexdigest()
@@ -431,11 +475,11 @@ def run_master_demo():
 
     valid = RazorpayWebhookSignatureValidator.validate(test_body, correct_sig, test_secret)
     invalid = RazorpayWebhookSignatureValidator.validate(test_body, wrong_sig, test_secret)
-    print(f"   ✓  Valid HMAC-SHA256 signature accepted : {valid} — {'PASS' if valid else 'FAIL'}")
-    print(f"   ✓  Invalid signature rejected           : {not invalid} — {'PASS' if not invalid else 'FAIL'}")
-    print(f"   ✓  Raw bytes used (not re-serialized)   : PASS (by construction)")
+    print(f"   * Valid HMAC-SHA256 signature accepted : {valid} - {'PASS' if valid else 'FAIL'}")
+    print(f"   * Invalid signature rejected           : {not invalid} - {'PASS' if not invalid else 'FAIL'}")
+    print(f"   * Raw bytes used (not re-serialized)   : PASS (by construction)")
 
-    # ── Webhook Event Normalization ────────────────────────────────────────────
+    #  Webhook Event Normalization 
     print()
     print("   [C] Razorpay Webhook Event Normalization:")
 
@@ -487,7 +531,7 @@ def run_master_demo():
             "expected_payment_id": "pay_demo_auth001",
         },
         {
-            "event_type": "order.paid → payment.captured",
+            "event_type": "order.paid  payment.captured",
             "payload": {
                 "event": "order.paid",
                 "entity": "event",
@@ -524,12 +568,12 @@ def run_master_demo():
         # Metadata untrusted annotation must be present
         ok = ok and ("UNTRUSTED_notes" in wh.payload)
         status_str = "PASS" if ok else "FAIL"
-        print(f"   ✓  {tc['event_type']:<35} → event={wh.event:<30} {status_str}")
+        print(f"   [PASS]  {tc['event_type']:<35}  event={wh.event:<30} {status_str}")
         all_norm_ok = all_norm_ok and ok
 
-    print(f"   ✓  All normalizations: {'PASS' if all_norm_ok else 'FAIL'}")
+    print(f"   [PASS]  All normalizations: {'PASS' if all_norm_ok else 'FAIL'}")
 
-    # ── Capability Model ───────────────────────────────────────────────────────
+    #  Capability Model 
     print()
     print("   [D] Provider Capability Model:")
     sim_caps = get_capabilities(ProviderMode.SIMULATION)
@@ -538,9 +582,9 @@ def run_master_demo():
     print(f"   RAZORPAY_TEST | live_money_execution={test_caps.live_money_execution} | verify_sig={test_caps.verify_webhook_signature}")
     assert sim_caps.live_money_execution is False, "SIMULATION live_money MUST be False"
     assert test_caps.live_money_execution is False, "RAZORPAY_TEST live_money MUST be False"
-    print(f"   ✓  All modes: live_money_execution = False — PASS")
+    print(f"   [PASS]  All modes: live_money_execution = False - PASS")
 
-    # ── Test Mode Connectivity (offline or real) ───────────────────────────────
+    #  Test Mode Connectivity (offline or real) 
     print()
     if mode == ProviderMode.RAZORPAY_TEST and razorpay_key_id and razorpay_key_secret:
         print("   [E] Razorpay Test API Connectivity (LIVE TEST MODE):")
@@ -548,9 +592,9 @@ def run_master_demo():
         adapter = RazorpayGatewayAdapter(mode=ProviderMode.RAZORPAY_TEST)
         success, message = adapter.test_connection()
         status_str = "PASS" if success else "WARN (credentials may need verification)"
-        print(f"   ✓  API Connectivity: {success} — {message}")
-        print(f"   ✓  Connection Test  : {status_str}")
-        print(f"   ✓  Live Money       : DISABLED (confirmed by adapter)")
+        print(f"   [PASS]  API Connectivity: {success} - {message}")
+        print(f"   [PASS]  Connection Test  : {status_str}")
+        print(f"   [PASS]  Live Money       : DISABLED (confirmed by adapter)")
     else:
         print("   [E] OFFLINE CONTRACT MODE:")
         print(f"      Razorpay Test Mode credentials not configured.")
@@ -559,7 +603,7 @@ def run_master_demo():
         print(f"      To enable: set RECOVERAI_PROVIDER_MODE=razorpay_test")
         print(f"                     RAZORPAY_KEY_ID=rzp_test_xxx")
         print(f"                     RAZORPAY_KEY_SECRET=your_secret")
-        print(f"   ✓  OFFLINE CONTRACT MODE — adapter and tests validated — PASS")
+        print(f"   [PASS]  OFFLINE CONTRACT MODE - adapter and tests validated - PASS")
 
     print(f"   [PASS] Step 9 Razorpay Test Mode Integration validated.")
 

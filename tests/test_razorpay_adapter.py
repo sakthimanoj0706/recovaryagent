@@ -39,8 +39,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 class TestProviderModeDefault:
     def test_default_mode_is_simulation(self, monkeypatch):
-        monkeypatch.delenv("RECOVERAI_PROVIDER_MODE", raising=False)
-        monkeypatch.delenv("PAYMENT_PROVIDER", raising=False)
+        def mock_getenv(key, default=None):
+            if key in ("RECOVERAI_PROVIDER_MODE", "PAYMENT_PROVIDER"):
+                return default
+            import os
+            return os.environ.get(key, default)
+        
+        monkeypatch.setattr("os.getenv", mock_getenv)
         from gateway.provider_config import get_provider_mode, ProviderMode
         assert get_provider_mode() == ProviderMode.SIMULATION
 
@@ -245,6 +250,49 @@ class TestRazorpayFetchOrderPayments:
 # ---------------------------------------------------------------------------
 # Test 10: Razorpay Client — Payment Link Creation
 # ---------------------------------------------------------------------------
+
+class TestRazorpayCheckoutTests:
+    def test_create_checkout_order(self):
+        from gateway.razorpay_client import RazorpayClient
+        from gateway.razorpay_models import RazorpayOrder
+        
+        order_data = {
+            "id": "order_test_new",
+            "amount": 50000,
+            "amount_paid": 0,
+            "amount_due": 50000,
+            "currency": "INR",
+            "status": "created",
+            "attempts": 0,
+        }
+        
+        client = RazorpayClient(key_id="rzp_test_x", key_secret="secret_y")
+        with patch.object(client, "_request", return_value=order_data):
+            order = client.create_order(amount_paise=50000, currency="INR")
+            assert isinstance(order, RazorpayOrder)
+            assert order.id == "order_test_new"
+            assert order.amount_inr == 500.0
+
+    def test_checkout_signature_valid(self):
+        from gateway.razorpay_webhook import RazorpayCheckoutSignatureValidator
+        import hmac, hashlib
+        
+        secret = "test_secret_123"
+        order_id = "order_abc"
+        payment_id = "pay_def"
+        payload = f"{order_id}|{payment_id}"
+        valid_sig = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+        
+        assert RazorpayCheckoutSignatureValidator.validate(
+            order_id=order_id, payment_id=payment_id, signature=valid_sig, key_secret=secret
+        ) is True
+
+    def test_checkout_signature_invalid(self):
+        from gateway.razorpay_webhook import RazorpayCheckoutSignatureValidator
+        
+        assert RazorpayCheckoutSignatureValidator.validate(
+            order_id="order_abc", payment_id="pay_def", signature="wrong_sig", key_secret="secret"
+        ) is False
 
 class TestRazorpayCreatePaymentLink:
     def test_create_payment_link_success(self):
