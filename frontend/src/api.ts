@@ -194,3 +194,44 @@ export async function fetchReplayEvidence(runId: string): Promise<any> {
   if (!res.ok) throw new Error('Failed to fetch replay evidence');
   return res.json();
 }
+
+// =============================================================================
+// Step 14: Provider Status & Razorpay Test Console API
+// =============================================================================
+
+export async function fetchProviderStatus(): Promise<any> {
+  const res = await fetch(`${API_BASE}/provider/status`);
+  if (!res.ok) throw new Error('Failed to fetch provider status');
+  return res.json();
+}
+
+export async function testProviderConnection(): Promise<any> {
+  const res = await fetch(`${API_BASE}/provider/test-connection`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error('Provider connection test failed');
+  return res.json();
+}
+
+export async function createTestPaymentLink(paymentId: string, amount: number, description?: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/provider/payment-link`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ payment_id: paymentId, amount, description }),
+  });
+  if (!res.ok) throw new Error('Failed to create payment link');
+  return res.json();
+}
+
+export async function fetchProviderPayment(paymentId: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/provider/payment/${paymentId}`);
+  if (!res.ok) throw new Error(`Failed to fetch provider payment ${paymentId}`);
+  return res.json();
+}
+
+export async function fetchProviderOrder(orderId: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/provider/order/${orderId}`);
+  if (!res.ok) throw new Error(`Failed to fetch provider order ${orderId}`);
+  return res.json();
+}
+

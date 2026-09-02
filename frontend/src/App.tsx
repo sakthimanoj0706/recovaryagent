@@ -17,6 +17,9 @@ import { PaymentDetailPanel } from './components/PaymentDetailPanel';
 import { BenchmarkPanel } from './components/BenchmarkPanel';
 import { PolicyLab } from './components/PolicyLab';
 import { DecisionReplay } from './components/DecisionReplay';
+import ProviderStatus from './components/ProviderStatus';
+import RazorpayTestConsole from './components/RazorpayTestConsole';
+
 
 
 
@@ -30,7 +33,9 @@ import {
   runRecovery,
   resetDemoState,
 } from './api';
+import { fetchProviderStatus } from './api';
 import { SystemMetrics, PaymentItem, ClosedLoopOutcome, PipelineStep, AuditEntry } from './types';
+
 
 export const App: React.FC = () => {
   const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
@@ -45,6 +50,9 @@ export const App: React.FC = () => {
   const [selectedPaymentId, setSelectedPaymentId] = useState<string | undefined>(undefined);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [providerMode, setProviderMode] = useState<string>('simulation');
+
+
 
   const loadInitialData = async () => {
     try {
@@ -221,6 +229,12 @@ export const App: React.FC = () => {
 
         {/* Recovery Decision Replay & Evidence Graph (Step 13) */}
         <DecisionReplay />
+
+        {/* Provider Status & Razorpay Test Console (Step 14) */}
+        <ProviderStatus />
+        <RazorpayTestConsole providerMode={providerMode} isVisible={true} />
+
+
 
         {/* Payments Explorer Full Table */}
 

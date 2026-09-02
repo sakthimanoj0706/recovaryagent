@@ -485,7 +485,20 @@ def run_demo_scenario(scenario: Optional[str] = None, scenario_id: Optional[str]
 # =============================================================================
 
 from ingestion import get_event_processor, WebhookPayload
-from gateway import get_gateway
+from gateway import (
+    get_gateway,
+    get_provider_mode,
+    get_capabilities,
+    get_provider_display_name,
+    ProviderMode,
+    RazorpayWebhookSignatureValidator,
+    RazorpayWebhookNormalizer,
+    RazorpaySignatureError,
+    extract_razorpay_event_id,
+    extract_razorpay_signature,
+    RazorpayProviderStatus,
+)
+from fastapi import Request
 
 
 @router.post("/webhooks/payment")
@@ -833,7 +846,379 @@ def get_replay_evidence_endpoint(run_id: str) -> Dict[str, Any]:
 
 
 
+# =============================================================================
+# PROVIDER STATUS & RAZORPAY TEST MODE API (Step 14)
+# =============================================================================
 
+
+class PaymentLinkRequest(BaseModel):
+    """Request body for creating a recovery payment link."""
+    payment_id: str
+    amount: float
+    order_id: Optional[str] = None
+    description: Optional[str] = None
+    correlation_id: Optional[str] = None
+
+
+@router.get("/provider/status")
+def get_provider_status() -> Dict[str, Any]:
+    """
+    Return the current payment provider mode, capabilities, and configuration status.
+
+    SECURITY: key_id, key_secret, webhook_secret are NEVER included in this response.
+    Provider mode is controlled server-side — the frontend can only read, never change.
+    """
+    mode = get_provider_mode()
+    caps = get_capabilities(mode)
+    display_name = get_provider_display_name(mode)
+    gateway = get_gateway()
+
+    key_id = os.getenv("RAZORPAY_KEY_ID", "")
+    webhook_secret = os.getenv("RAZORPAY_WEBHOOK_SECRET", "")
+    key_secret = os.getenv("RAZORPAY_KEY_SECRET", "")
+
+    if mode == ProviderMode.RAZORPAY_TEST:
+        if key_id and key_secret:
+            config_status = "CONFIGURED"
+        elif key_id or key_secret:
+            config_status = "PARTIAL"
+        else:
+            config_status = "NOT_CONFIGURED"
+    else:
+        config_status = "SIMULATION_NO_CREDENTIALS_REQUIRED"
+
+    return {
+        "provider_mode": mode.value,
+        "provider_name": display_name,
+        "test_mode": mode == ProviderMode.RAZORPAY_TEST,
+        "simulation_mode": mode == ProviderMode.SIMULATION,
+        "live_enabled": False,  # ALWAYS FALSE — hard-blocked
+        "live_execution_blocked": True,
+        "configuration_status": config_status,
+        "webhook_configured": bool(webhook_secret),
+        "capabilities": {
+            "create_payment_link": caps.create_payment_link,
+            "fetch_payment": caps.fetch_payment,
+            "fetch_order": caps.fetch_order,
+            "receive_webhooks": caps.receive_webhooks,
+            "verify_webhook_signature": caps.verify_webhook_signature,
+            "live_money_execution": False,  # ALWAYS FALSE
+        },
+        "gateway_provider": gateway.provider_name,
+        "is_simulation": gateway.is_simulation,
+        # SECURITY: key_id/key_secret/webhook_secret NEVER in response
+        "key_configured": bool(key_id) and bool(key_secret),
+    }
+
+
+@router.post("/provider/test-connection")
+def test_provider_connection() -> Dict[str, Any]:
+    """
+    Test connectivity to the configured payment provider.
+    For SIMULATION mode: always returns success.
+    For RAZORPAY_TEST mode: performs real API connectivity check.
+    """
+    gateway = get_gateway()
+    mode = get_provider_mode()
+
+    if mode == ProviderMode.SIMULATION:
+        return {
+            "success": True,
+            "mode": "simulation",
+            "message": "SIMULATION mode — no external connectivity required",
+            "provider": "mock",
+        }
+
+    if mode == ProviderMode.RAZORPAY_LIVE:
+        return {
+            "success": False,
+            "mode": "razorpay_live",
+            "message": "RAZORPAY_LIVE mode is blocked by deployment policy. No live connections allowed.",
+            "provider": "razorpay",
+        }
+
+    # RAZORPAY_TEST — real connectivity test
+    if hasattr(gateway, "test_connection"):
+        cid = f"cid_{uuid.uuid4().hex[:10]}"
+        success, message = gateway.test_connection(correlation_id=cid)
+        return {
+            "success": success,
+            "mode": "razorpay_test",
+            "message": message,
+            "provider": "razorpay",
+            "correlation_id": cid,
+            "live_enabled": False,
+        }
+
+    return {
+        "success": False,
+        "mode": mode.value,
+        "message": "Provider does not support connection testing",
+        "provider": "unknown",
+    }
+
+
+@router.post("/provider/payment-link")
+def create_provider_payment_link(req: PaymentLinkRequest) -> Dict[str, Any]:
+    """
+    Create a recovery payment link through the configured provider.
+    SIMULATION: Returns deterministic mock link.
+    RAZORPAY_TEST: Creates real Razorpay Test Mode payment link.
+    RAZORPAY_LIVE: Hard-blocked.
+    """
+    from gateway.provider_config import LiveModeDisabledError
+    gateway = get_gateway()
+    mode = get_provider_mode()
+
+    if mode == ProviderMode.RAZORPAY_LIVE:
+        raise HTTPException(
+            status_code=403,
+            detail="LIVE PAYMENT EXECUTION IS DISABLED. "
+                   "Razorpay Live mode is blocked by deployment policy.",
+        )
+
+    try:
+        cid = req.correlation_id or f"cid_{uuid.uuid4().hex[:10]}"
+        if hasattr(gateway, "create_payment_link"):
+            result = gateway.create_payment_link(
+                payment_id=req.payment_id,
+                amount=req.amount,
+                order_id=req.order_id,
+                description=req.description,
+                correlation_id=cid,
+            )
+        else:
+            raise HTTPException(status_code=503, detail="Gateway does not support payment link creation")
+
+        return {
+            "success": result.status.value == "SUCCESS",
+            "mode": mode.value,
+            "provider": result.provider,
+            "execution_id": result.execution_id,
+            "payment_id": result.payment_id,
+            "message": result.message,
+            "link_url": result.metadata.get("short_url", result.metadata.get("provider_link_id")),
+            "simulation": result.simulation,
+            "live_money": False,
+            "correlation_id": cid,
+        }
+
+    except LiveModeDisabledError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Payment link creation failed: {exc}")
+
+
+@router.get("/provider/payment/{payment_id}")
+def fetch_provider_payment(payment_id: str) -> Dict[str, Any]:
+    """
+    Fetch payment details from the configured provider.
+    RAZORPAY_TEST mode only — returns SIMULATION stub otherwise.
+
+    IMPORTANT: HTTP 200 with status=authorized from Razorpay does NOT equal
+    VERIFIED_RECOVERY in RecoverAI. Independent RecoveryVerifier performs
+    ledger re-evaluation before any recovery is marked verified.
+    """
+    mode = get_provider_mode()
+    gateway = get_gateway()
+
+    if mode == ProviderMode.SIMULATION:
+        return {
+            "provider_mode": "simulation",
+            "payment_id": payment_id,
+            "status": "simulated",
+            "note": "SIMULATION mode — no real payment data available",
+            "verified_recovery": False,
+            "verification_requires": "Independent RecoveryVerifier ledger evaluation",
+        }
+
+    if mode == ProviderMode.RAZORPAY_LIVE:
+        raise HTTPException(
+            status_code=403,
+            detail="LIVE PAYMENT EXECUTION IS DISABLED.",
+        )
+
+    # RAZORPAY_TEST
+    if hasattr(gateway, "fetch_payment"):
+        payment = gateway.fetch_payment(payment_id, correlation_id=f"cid_{uuid.uuid4().hex[:8]}")
+        if payment is None:
+            raise HTTPException(status_code=404, detail=f"Payment {payment_id} not found via Razorpay")
+        return {
+            "provider_mode": "razorpay_test",
+            "payment_id": payment.id,
+            "order_id": payment.order_id,
+            "status": payment.status,
+            "amount_inr": payment.amount_inr,
+            "currency": payment.currency,
+            "captured": payment.is_captured,
+            "method": payment.method,
+            "error_code": payment.error_code,
+            "live_money": False,
+            # CRITICAL: provider status ≠ RecoverAI verification
+            "verified_recovery": False,
+            "verification_note": (
+                "HTTP 200 from Razorpay does NOT equal VERIFIED_RECOVERY. "
+                "RecoveryVerifier performs independent ledger re-evaluation."
+            ),
+        }
+
+    raise HTTPException(status_code=503, detail="Gateway does not support direct payment fetch")
+
+
+@router.get("/provider/order/{order_id}")
+def fetch_provider_order(order_id: str) -> Dict[str, Any]:
+    """
+    Fetch order details and associated payments from the provider.
+    RAZORPAY_TEST mode only.
+    """
+    mode = get_provider_mode()
+    gateway = get_gateway()
+
+    if mode != ProviderMode.RAZORPAY_TEST:
+        return {
+            "provider_mode": mode.value,
+            "order_id": order_id,
+            "note": f"Order fetch only available in RAZORPAY_TEST mode. Current mode: {mode.value}",
+        }
+
+    cid = f"cid_{uuid.uuid4().hex[:8]}"
+
+    order = None
+    if hasattr(gateway, "fetch_order"):
+        order = gateway.fetch_order(order_id, correlation_id=cid)
+
+    order_payments = None
+    if hasattr(gateway, "fetch_order_payments"):
+        order_payments = gateway.fetch_order_payments(order_id, correlation_id=cid)
+
+    if order is None:
+        raise HTTPException(status_code=404, detail=f"Order {order_id} not found via Razorpay")
+
+    payments_list = []
+    if order_payments:
+        payments_list = [
+            {
+                "id": p.id,
+                "status": p.status,
+                "amount_inr": p.amount_inr,
+                "method": p.method,
+                "captured": p.is_captured,
+            }
+            for p in order_payments.items
+        ]
+
+    return {
+        "provider_mode": "razorpay_test",
+        "order_id": order.id,
+        "status": order.status,
+        "amount_inr": order.amount_inr,
+        "amount_paid_inr": order.amount_paid / 100.0,
+        "amount_due_inr": order.amount_due / 100.0,
+        "currency": order.currency,
+        "attempts": order.attempts,
+        "payments_count": order_payments.count if order_payments else 0,
+        "payments": payments_list,
+        "live_money": False,
+        "correlation_id": cid,
+    }
+
+
+@router.post("/webhooks/razorpay")
+async def handle_razorpay_webhook(request: Request) -> Dict[str, Any]:
+    """
+    Dedicated Razorpay webhook ingestion endpoint with HMAC-SHA256 signature validation.
+
+    Pipeline:
+    1. Read exact raw body bytes (BEFORE JSON parse — required for signature)
+    2. Extract x-razorpay-signature and x-razorpay-event-id headers
+    3. Validate HMAC-SHA256 signature against raw body bytes
+    4. Parse and normalize to RecoverAI WebhookPayload
+    5. Idempotency check via existing EventProcessor
+    6. FinancialStateEngine re-evaluation
+    7. Recovery lifecycle trigger (if state changed)
+    8. Audit log
+
+    SECURITY:
+    - Invalid signature → HTTP 400, no state mutation
+    - Razorpay notes/metadata → UNTRUSTED, zero authority over RecoverAI engine
+    - HTTP 200 from Razorpay ≠ VERIFIED_RECOVERY (independent verifier required)
+    """
+    # Step 1: Raw bytes — MUST happen before any JSON parse
+    raw_body: bytes = await request.body()
+    headers = dict(request.headers)
+
+    cid = f"rzp_wh_{uuid.uuid4().hex[:10]}"
+
+    # Step 2: Extract security headers
+    signature = extract_razorpay_signature(headers)
+    provider_event_id = extract_razorpay_event_id(headers)
+
+    if not provider_event_id:
+        provider_event_id = f"rzp_evt_{uuid.uuid4().hex[:10]}"
+
+    # Step 3: Signature validation
+    webhook_secret = os.getenv("RAZORPAY_WEBHOOK_SECRET", "")
+    signature_verified = False
+
+    if webhook_secret and signature:
+        try:
+            signature_verified = RazorpayWebhookSignatureValidator.validate(
+                raw_body=raw_body,
+                signature=signature,
+                webhook_secret=webhook_secret,
+            )
+            if not signature_verified:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Webhook signature validation failed. Event rejected.",
+                )
+        except RazorpaySignatureError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+    elif webhook_secret and not signature:
+        raise HTTPException(
+            status_code=400,
+            detail="Missing x-razorpay-signature header. Event rejected.",
+        )
+    # If webhook_secret not configured, accept but mark as unverified (warn in log)
+    elif not webhook_secret:
+        import warnings
+        warnings.warn(
+            "RAZORPAY_WEBHOOK_SECRET not configured — webhook signature cannot be validated. "
+            "Configure RAZORPAY_WEBHOOK_SECRET for production use.",
+            RuntimeWarning,
+            stacklevel=1,
+        )
+
+    # Step 4: Parse raw body as JSON
+    try:
+        import json as json_module
+        raw_payload = json_module.loads(raw_body.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise HTTPException(status_code=400, detail=f"Malformed JSON in webhook body: {exc}")
+
+    # Step 5: Normalize to RecoverAI WebhookPayload
+    webhook_payload = RazorpayWebhookNormalizer.normalize(
+        raw_payload=raw_payload,
+        provider_event_id=provider_event_id,
+        correlation_id=cid,
+        signature_verified=signature_verified,
+    )
+
+    # Step 6-8: Feed into existing EventProcessor (idempotency + state + recovery + audit)
+    processor = get_event_processor()
+    result = processor.process_webhook(webhook_payload.model_dump())
+
+    return {
+        "status": "accepted",
+        "event_id": provider_event_id,
+        "correlation_id": cid,
+        "ingestion_status": result.to_dict().get("status"),
+        "payment_id": result.payment_id,
+        "state_changed": result.state_changed,
+        "signature_verified": signature_verified,
+        "simulation": get_provider_mode() == ProviderMode.SIMULATION,
+        "live_money": False,
+    }
 
 
 
