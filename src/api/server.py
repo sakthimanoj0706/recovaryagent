@@ -2,7 +2,8 @@
 FastAPI Server for RecoverAI Command Center.
 """
 
-from fastapi import FastAPI
+import os
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from .routes import router
 
@@ -12,14 +13,25 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Enable CORS for frontend development
+# In production, restrict CORS
+env = os.getenv("RECOVERAI_ENV", "production")
+origins = ["*"] if env == "development" else ["https://dashboard.recoverai.com"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
 
 app.include_router(router, prefix="/api")
 

@@ -28,6 +28,19 @@ class AuditLogger:
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         self.events_path.parent.mkdir(parents=True, exist_ok=True)
 
+    def _redact(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Redact sensitive values like credentials or raw headers."""
+        sensitive_keys = {"authorization", "password", "secret", "token", "key_secret"}
+        redacted = {}
+        for k, v in data.items():
+            if any(s in k.lower() for s in sensitive_keys):
+                redacted[k] = "***REDACTED***"
+            elif isinstance(v, dict):
+                redacted[k] = self._redact(v)
+            else:
+                redacted[k] = v
+        return redacted
+
     def log(self, record: Union[AuditRecord, Dict[str, Any], Any]) -> Dict[str, Any]:
         """
         Append lifecycle outcome to JSONL log file. Never overwrites existing records.
@@ -61,10 +74,12 @@ class AuditLogger:
                 "amount_pending": float(dumped.get("amount_pending", 0.0)),
                 "amount_escalated": float(dumped.get("amount_escalated", 0.0)),
             }
+            entry = self._redact(entry)
         elif isinstance(record, dict):
             entry = dict(record)
             if "timestamp" not in entry:
                 entry["timestamp"] = datetime.now(timezone.utc).isoformat()
+            entry = self._redact(entry)
         else:
             entry = {"timestamp": datetime.now(timezone.utc).isoformat(), "raw": str(record)}
 

@@ -9,6 +9,9 @@ import uuid
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 import pandas as pd
+from .auth import Role, require_viewer, require_operator, require_admin, require_auditor
+from fastapi import Depends
+from .rate_limit import expensive_limiter, webhook_limiter
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
@@ -66,7 +69,7 @@ def load_dataset() -> tuple[pd.DataFrame, Dict[str, List[Event]]]:
 
 
 @router.get("/metrics")
-def get_metrics() -> Dict[str, Any]:
+def get_metrics(_role: Role = Depends(require_viewer))-> Dict[str, Any]:
     """
     Retrieve aggregated dashboard KPIs including ₹ Recovered and ₹ Correctly Withheld.
     """
@@ -91,7 +94,7 @@ def get_metrics() -> Dict[str, Any]:
 
 
 @router.get("/payments")
-def list_payments(limit: int = 50, offset: int = 0, filter_state: Optional[str] = None) -> Dict[str, Any]:
+def list_payments(limit: int = 50, offset: int = 0, filter_state: Optional[str] = None, _role: Role = Depends(require_viewer))-> Dict[str, Any]:
     """
     List payments with ground truth states and recovery attributes.
     """
@@ -137,7 +140,7 @@ def list_payments(limit: int = 50, offset: int = 0, filter_state: Optional[str] 
 
 
 @router.get("/payments/{payment_id}")
-def get_payment_details(payment_id: str) -> Dict[str, Any]:
+def get_payment_details(payment_id: str, _role: Role = Depends(require_viewer))-> Dict[str, Any]:
     """
     Retrieve full details, lifecycle events, and intelligence evaluation for a payment.
     """
@@ -175,8 +178,8 @@ def get_payment_details(payment_id: str) -> Dict[str, Any]:
 
 
 @router.post("/recovery/{payment_id}")
-@router.post("/recovery/run/{payment_id}")
-def run_recovery_on_payment(payment_id: str) -> Dict[str, Any]:
+@router.post("/recovery/run/{payment_id}", dependencies=[Depends(expensive_limiter)])
+def run_recovery_on_payment(payment_id: str)-> Dict[str, Any]:
     """
     Trigger end-to-end closed-loop recovery on a specific payment.
     """
@@ -194,7 +197,7 @@ def run_recovery_on_payment(payment_id: str) -> Dict[str, Any]:
 
 
 @router.get("/recovery/{payment_id}/trace")
-def get_recovery_trace(payment_id: str) -> Dict[str, Any]:
+def get_recovery_trace(payment_id: str, _role: Role = Depends(require_viewer))-> Dict[str, Any]:
     """
     Retrieve the structured Agent Decision Trace across the 6-stage lifecycle:
     PROVE -> PRIORITIZE -> PLAN -> GUARD -> ACT -> VERIFY.
@@ -212,8 +215,8 @@ def get_recovery_trace(payment_id: str) -> Dict[str, Any]:
     return trace.model_dump()
 
 
-@router.post("/agent/recover/{payment_id}")
-def run_agentic_recovery(payment_id: str) -> Dict[str, Any]:
+@router.post("/agent/recover/{payment_id}", dependencies=[Depends(expensive_limiter)])
+def run_agentic_recovery(payment_id: str)-> Dict[str, Any]:
     """
     Execute bounded autonomous agent recovery loop on a payment.
     Returns full AgentRunResult telemetry including steps, tool calls, and policy checks.
@@ -232,7 +235,7 @@ def run_agentic_recovery(payment_id: str) -> Dict[str, Any]:
 
 
 @router.get("/agent/runs/{run_id}")
-def get_agent_run(run_id: str) -> Dict[str, Any]:
+def get_agent_run(run_id: str, _role: Role = Depends(require_viewer))-> Dict[str, Any]:
     """
     Retrieve full execution trace for an autonomous agent run.
     """
@@ -245,7 +248,7 @@ def get_agent_run(run_id: str) -> Dict[str, Any]:
 
 
 @router.get("/audit")
-def get_audit_trail(limit: int = 50) -> List[Dict[str, Any]]:
+def get_audit_trail(limit: int = 50, _role: Role = Depends(require_auditor))-> List[Dict[str, Any]]:
     """
     Retrieve persisted audit trail records.
     """
@@ -256,7 +259,7 @@ def get_audit_trail(limit: int = 50) -> List[Dict[str, Any]]:
 
 
 @router.post("/demo/reset")
-def reset_demo_state() -> Dict[str, Any]:
+def reset_demo_state(_role: Role = Depends(require_admin))-> Dict[str, Any]:
     """
     Deterministic Demo Reset Endpoint.
     Resets in-memory event stores, action histories, retry counters, and agent memory for simulation demos.
@@ -294,7 +297,7 @@ class DemoScenarioRequest(BaseModel):
 
 @router.post("/demo/scenario/{scenario_id}")
 @router.post("/demo/{scenario}")
-def run_demo_scenario(scenario: Optional[str] = None, scenario_id: Optional[str] = None, req: Optional[DemoScenarioRequest] = None) -> Dict[str, Any]:
+def run_demo_scenario(scenario: Optional[str] = None, scenario_id: Optional[str] = None, req: Optional[DemoScenarioRequest] = None, _role: Role = Depends(require_admin))-> Dict[str, Any]:
 
 
     """
@@ -501,7 +504,7 @@ from gateway import (
 from fastapi import Request
 
 
-@router.post("/webhooks/payment")
+@router.post("/webhooks/payment", dependencies=[Depends(webhook_limiter)])
 def handle_payment_webhook(payload: Dict[str, Any]) -> Dict[str, Any]:
     """
     Real-time payment webhook ingestion endpoint.
@@ -513,7 +516,7 @@ def handle_payment_webhook(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 @router.get("/events/timeline")
-def get_event_timeline(limit: int = 50) -> Dict[str, Any]:
+def get_event_timeline(limit: int = 50, _role: Role = Depends(require_viewer))-> Dict[str, Any]:
     """
     Retrieve chronological event ingestion timeline for the Command Center.
     """
@@ -526,7 +529,7 @@ def get_event_timeline(limit: int = 50) -> Dict[str, Any]:
 
 
 @router.get("/system/health")
-def get_system_health() -> Dict[str, Any]:
+def get_system_health(_role: Role = Depends(require_viewer))-> Dict[str, Any]:
     """
     Comprehensive System Health Status Report across all RecoverAI modules.
     """
@@ -564,7 +567,7 @@ def get_system_health() -> Dict[str, Any]:
 
 
 @router.get("/system/ready")
-def get_system_ready() -> Dict[str, Any]:
+def get_system_ready(_role: Role = Depends(require_viewer))-> Dict[str, Any]:
     """
     Readiness Probe endpoint distinguishing HEALTHY, DEGRADED, or NOT_READY.
     """
@@ -609,7 +612,7 @@ class BenchmarkRunRequest(BaseModel):
 
 
 @router.post("/benchmark/run")
-def run_benchmark_endpoint(req: BenchmarkRunRequest) -> Dict[str, Any]:
+def run_benchmark_endpoint(req: BenchmarkRunRequest, _role: Role = Depends(require_operator))-> Dict[str, Any]:
     """
     Run on-demand comparative economic benchmark between Naive baseline and RecoverAI.
     """
@@ -620,7 +623,7 @@ def run_benchmark_endpoint(req: BenchmarkRunRequest) -> Dict[str, Any]:
 
 
 @router.get("/benchmark/latest")
-def get_latest_benchmark_endpoint() -> Dict[str, Any]:
+def get_latest_benchmark_endpoint(_role: Role = Depends(require_viewer))-> Dict[str, Any]:
     """
     Retrieve the most recently executed benchmark comparison result.
     """
@@ -632,7 +635,7 @@ def get_latest_benchmark_endpoint() -> Dict[str, Any]:
 
 
 @router.get("/benchmark/compare")
-def get_benchmark_compare_endpoint() -> Dict[str, Any]:
+def get_benchmark_compare_endpoint(_role: Role = Depends(require_viewer))-> Dict[str, Any]:
     """
     Formatted comparative data payload for Command Center UI visualization.
     """
@@ -687,7 +690,7 @@ class PolicyLabRunRequestBody(BaseModel):
 
 
 @router.post("/policy-lab/run")
-def run_policy_lab_endpoint(req: PolicyLabRunRequestBody) -> Dict[str, Any]:
+def run_policy_lab_endpoint(req: PolicyLabRunRequestBody, _role: Role = Depends(require_operator))-> Dict[str, Any]:
     """
     Run 3-way comparative simulation (Naive vs RecoverAI vs Custom Policy)
     under configurable economic conditions.
@@ -697,7 +700,7 @@ def run_policy_lab_endpoint(req: PolicyLabRunRequestBody) -> Dict[str, Any]:
 
 
 @router.post("/policy-lab/sensitivity")
-def run_sensitivity_endpoint(req: SensitivityRequest) -> Dict[str, Any]:
+def run_sensitivity_endpoint(req: SensitivityRequest, _role: Role = Depends(require_operator))-> Dict[str, Any]:
     """
     Execute one-parameter sensitivity sweep across multiple economic cost points.
     """
@@ -706,7 +709,7 @@ def run_sensitivity_endpoint(req: SensitivityRequest) -> Dict[str, Any]:
 
 
 @router.post("/policy-lab/break-even")
-def run_break_even_endpoint(req: BreakEvenRequest) -> Dict[str, Any]:
+def run_break_even_endpoint(req: BreakEvenRequest, _role: Role = Depends(require_operator))-> Dict[str, Any]:
     """
     Discover deterministic economic break-even crossover points.
     """
@@ -715,7 +718,7 @@ def run_break_even_endpoint(req: BreakEvenRequest) -> Dict[str, Any]:
 
 
 @router.post("/policy-lab/monte-carlo")
-def run_monte_carlo_endpoint(req: MonteCarloConfig) -> Dict[str, Any]:
+def run_monte_carlo_endpoint(req: MonteCarloConfig, _role: Role = Depends(require_operator))-> Dict[str, Any]:
     """
     Run stochastic multi-population Monte Carlo simulation across seed sequence.
     """
@@ -724,7 +727,7 @@ def run_monte_carlo_endpoint(req: MonteCarloConfig) -> Dict[str, Any]:
 
 
 @router.get("/policy-lab/latest")
-def get_latest_policy_lab_endpoint() -> Dict[str, Any]:
+def get_latest_policy_lab_endpoint(_role: Role = Depends(require_viewer))-> Dict[str, Any]:
     """
     Retrieve the most recent Policy Lab simulation result or run default 1k population.
     """
@@ -733,7 +736,7 @@ def get_latest_policy_lab_endpoint() -> Dict[str, Any]:
 
 
 @router.get("/policy-lab/{run_id}")
-def get_policy_lab_run_endpoint(run_id: str) -> Dict[str, Any]:
+def get_policy_lab_run_endpoint(run_id: str, _role: Role = Depends(require_viewer))-> Dict[str, Any]:
     """
     Retrieve a specific simulation run by its run_id.
     """
@@ -756,7 +759,7 @@ replay_service = ReplayService()
 
 
 @router.post("/replay/run")
-def run_decision_replay_endpoint(req: ReplayRequest) -> Dict[str, Any]:
+def run_decision_replay_endpoint(req: ReplayRequest, _role: Role = Depends(require_operator))-> Dict[str, Any]:
     """
     Execute deterministic transaction-level decision replay and evidence graph generation.
     Strictly SIMULATION ONLY.
@@ -769,7 +772,7 @@ def run_decision_replay_endpoint(req: ReplayRequest) -> Dict[str, Any]:
 
 
 @router.get("/replay/presets")
-def get_replay_presets_endpoint() -> List[Dict[str, Any]]:
+def get_replay_presets_endpoint(_role: Role = Depends(require_viewer))-> List[Dict[str, Any]]:
     """
     Retrieve list of built-in synthetic test fixtures for UI case selection.
     """
@@ -777,7 +780,7 @@ def get_replay_presets_endpoint() -> List[Dict[str, Any]]:
 
 
 @router.get("/replay/latest")
-def get_latest_replay_endpoint() -> Dict[str, Any]:
+def get_latest_replay_endpoint(_role: Role = Depends(require_viewer))-> Dict[str, Any]:
     """
     Retrieve the most recently executed decision replay.
     """
@@ -789,7 +792,7 @@ def get_latest_replay_endpoint() -> Dict[str, Any]:
 
 
 @router.get("/replay/{run_id}")
-def get_replay_by_id_endpoint(run_id: str) -> Dict[str, Any]:
+def get_replay_by_id_endpoint(run_id: str, _role: Role = Depends(require_viewer))-> Dict[str, Any]:
     """
     Retrieve a specific decision replay by its run_id or replay_id.
     """
@@ -803,7 +806,7 @@ def get_replay_by_id_endpoint(run_id: str) -> Dict[str, Any]:
 
 
 @router.get("/replay/{run_id}/graph")
-def get_replay_graph_endpoint(run_id: str) -> Dict[str, Any]:
+def get_replay_graph_endpoint(run_id: str, _role: Role = Depends(require_viewer))-> Dict[str, Any]:
     """
     Retrieve the Directed Acyclic Evidence Graph for a replay run.
     """
@@ -820,7 +823,7 @@ def get_replay_graph_endpoint(run_id: str) -> Dict[str, Any]:
 
 
 @router.get("/replay/{run_id}/explanation")
-def get_replay_explanation_endpoint(run_id: str) -> Dict[str, Any]:
+def get_replay_explanation_endpoint(run_id: str, _role: Role = Depends(require_viewer))-> Dict[str, Any]:
     """
     Retrieve the human-readable decision provenance explanation.
     """
@@ -831,7 +834,7 @@ def get_replay_explanation_endpoint(run_id: str) -> Dict[str, Any]:
 
 
 @router.get("/replay/{run_id}/evidence")
-def get_replay_evidence_endpoint(run_id: str) -> Dict[str, Any]:
+def get_replay_evidence_endpoint(run_id: str, _role: Role = Depends(require_auditor))-> Dict[str, Any]:
     """
     Retrieve exact financial proof, candidate matrix, and accounting conservation data.
     """
@@ -851,29 +854,31 @@ def get_replay_evidence_endpoint(run_id: str) -> Dict[str, Any]:
 # =============================================================================
 
 
+from pydantic import BaseModel, Field
+
 class PaymentLinkRequest(BaseModel):
     """Request body for creating a recovery payment link."""
-    payment_id: str
-    amount: float
-    order_id: Optional[str] = None
-    description: Optional[str] = None
-    correlation_id: Optional[str] = None
+    payment_id: str = Field(..., max_length=255)
+    amount: float = Field(..., gt=0.0, le=10000000.0, description="Amount must be positive")
+    order_id: Optional[str] = Field(None, max_length=255)
+    description: Optional[str] = Field(None, max_length=500)
+    correlation_id: Optional[str] = Field(None, max_length=255)
 
 class CheckoutOrderRequest(BaseModel):
     """Request body for creating a Standard Web Checkout order."""
-    payment_id: str
-    amount: float
-    currency: str = "INR"
-    receipt: Optional[str] = None
+    payment_id: str = Field(..., max_length=255)
+    amount: float = Field(..., gt=0.0, le=10000000.0, description="Amount must be positive")
+    currency: str = Field("INR", max_length=10)
+    receipt: Optional[str] = Field(None, max_length=255)
 
 class CheckoutVerifyRequest(BaseModel):
     """Request body for verifying checkout response from Razorpay Checkout."""
-    razorpay_order_id: str
-    razorpay_payment_id: str
-    razorpay_signature: str
+    razorpay_order_id: str = Field(..., max_length=255)
+    razorpay_payment_id: str = Field(..., max_length=255)
+    razorpay_signature: str = Field(..., max_length=1024)
 
 @router.get("/provider/status")
-def get_provider_status() -> Dict[str, Any]:
+def get_provider_status(_role: Role = Depends(require_viewer))-> Dict[str, Any]:
     """
     Return the current payment provider mode, capabilities, and configuration status.
 
@@ -924,7 +929,7 @@ def get_provider_status() -> Dict[str, Any]:
 
 
 @router.post("/provider/test-connection")
-def test_provider_connection() -> Dict[str, Any]:
+def test_provider_connection(_role: Role = Depends(require_admin))-> Dict[str, Any]:
     """
     Test connectivity to the configured payment provider.
     For SIMULATION mode: always returns success.
@@ -971,7 +976,7 @@ def test_provider_connection() -> Dict[str, Any]:
 
 
 @router.post("/provider/payment-link")
-def create_provider_payment_link(req: PaymentLinkRequest) -> Dict[str, Any]:
+def create_provider_payment_link(req: PaymentLinkRequest, _role: Role = Depends(require_operator))-> Dict[str, Any]:
     """
     Create a recovery payment link through the configured provider.
     SIMULATION: Returns deterministic mock link.
@@ -1022,7 +1027,7 @@ def create_provider_payment_link(req: PaymentLinkRequest) -> Dict[str, Any]:
 
 
 @router.post("/provider/checkout/order")
-def create_provider_checkout_order(req: CheckoutOrderRequest) -> Dict[str, Any]:
+def create_provider_checkout_order(req: CheckoutOrderRequest, _role: Role = Depends(require_operator))-> Dict[str, Any]:
     """
     Create a standard Web Checkout order through the configured provider.
     """
@@ -1071,7 +1076,7 @@ def create_provider_checkout_order(req: CheckoutOrderRequest) -> Dict[str, Any]:
 
 
 @router.post("/provider/checkout/verify")
-def verify_provider_checkout(req: CheckoutVerifyRequest) -> Dict[str, Any]:
+def verify_provider_checkout(req: CheckoutVerifyRequest, _role: Role = Depends(require_operator))-> Dict[str, Any]:
     """
     Verify the frontend Razorpay Checkout signature.
     Does NOT modify financial state directly.
@@ -1121,7 +1126,7 @@ def verify_provider_checkout(req: CheckoutVerifyRequest) -> Dict[str, Any]:
 
 
 @router.get("/provider/payment/{payment_id}")
-def fetch_provider_payment(payment_id: str) -> Dict[str, Any]:
+def fetch_provider_payment(payment_id: str, _role: Role = Depends(require_viewer))-> Dict[str, Any]:
     """
     Fetch payment details from the configured provider.
     RAZORPAY_TEST mode only — returns SIMULATION stub otherwise.
@@ -1177,7 +1182,7 @@ def fetch_provider_payment(payment_id: str) -> Dict[str, Any]:
 
 
 @router.get("/provider/order/{order_id}")
-def fetch_provider_order(order_id: str) -> Dict[str, Any]:
+def fetch_provider_order(order_id: str, _role: Role = Depends(require_viewer))-> Dict[str, Any]:
     """
     Fetch order details and associated payments from the provider.
     RAZORPAY_TEST mode only.
@@ -1234,7 +1239,7 @@ def fetch_provider_order(order_id: str) -> Dict[str, Any]:
     }
 
 
-@router.post("/webhooks/razorpay")
+@router.post("/webhooks/razorpay", dependencies=[Depends(webhook_limiter)])
 async def handle_razorpay_webhook(request: Request) -> Dict[str, Any]:
     """
     Dedicated Razorpay webhook ingestion endpoint with HMAC-SHA256 signature validation.
@@ -1333,3 +1338,45 @@ async def handle_razorpay_webhook(request: Request) -> Dict[str, Any]:
 
 
 
+
+# ==========================================
+# INTELLIGENT RECOVERY ENGINE (STEP 18)
+# ==========================================
+
+from pydantic import BaseModel
+from intelligence.service import IntelligentRecoveryService
+from state_engine.models import PaymentRecord, Event
+
+intel_service = IntelligentRecoveryService()
+
+class IntelligenceRequest(BaseModel):
+    payment: dict
+    events: list[dict]
+    retry_count: int = 0
+
+@router.post("/intelligence/analyze")
+async def analyze_failure(req: IntelligenceRequest, _role: Role = Depends(require_role(Role.ADMIN))):
+    payment = PaymentRecord(**req.payment)
+    events = [Event(**e) for e in req.events]
+    cls = intel_service.classifier.classify("VERIFIED_LOST", events)
+    return {"classification": cls.model_dump()}
+
+@router.post("/intelligence/decide")
+async def intelligence_decide(req: IntelligenceRequest, _role: Role = Depends(require_role(Role.ADMIN))):
+    payment = PaymentRecord(**req.payment)
+    events = [Event(**e) for e in req.events]
+    decision = intel_service.decide(payment, events, req.retry_count)
+    return {"decision": decision.model_dump()}
+
+@router.post("/intelligence/evaluate")
+async def intelligence_evaluate(req: IntelligenceRequest, _role: Role = Depends(require_role(Role.ADMIN))):
+    # Already evaluated inside decide, but we can expose it.
+    payment = PaymentRecord(**req.payment)
+    events = [Event(**e) for e in req.events]
+    decision = intel_service.decide(payment, events, req.retry_count)
+    return {"evaluation": decision.evaluation.model_dump()}
+
+@router.get("/intelligence/latest")
+async def get_latest_intelligence(_role: Role = Depends(require_role(Role.ADMIN))):
+    # Mock for frontend
+    return {"status": "active", "models_loaded": True, "decisions_made": 1000}

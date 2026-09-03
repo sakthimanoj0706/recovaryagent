@@ -55,6 +55,8 @@ from .llm import BaseLLMClient
 from .trace import AgentDecisionTrace, build_decision_trace
 
 
+
+
 class AgenticRecoveryOrchestrator:
     """
     Production-Style Agentic Recovery Orchestrator.
@@ -82,8 +84,14 @@ class AgenticRecoveryOrchestrator:
         self.policy_engine = policy_engine or PolicyEngine()
         self.firewall = firewall or RecoveryFirewall(max_retries=3)
         self.executor = executor or ActionExecutor()
+        
+
         self.verifier = verifier or RecoveryVerifier(state_engine=self.state_engine)
         self.audit_logger = audit_logger or AuditLogger()
+        from intelligence.service import IntelligentRecoveryService
+        self.intelligence_service = IntelligentRecoveryService(model=model, llm_client=llm_client)
+
+
         self._action_history: Dict[str, Set[str]] = {}
         self._run_cache: Dict[str, AgentRunResult] = {}
 
@@ -94,6 +102,7 @@ class AgenticRecoveryOrchestrator:
         order_events: Optional[List[Event]] = None,
         force_simulated_success: Optional[bool] = None,
         multi_step_scenario: Optional[bool] = False,
+        strategy_mode: str = "INTELLIGENT",
     ) -> AgentRunResult:
         """
         Execute the bounded, observable autonomous agent loop:
@@ -220,22 +229,42 @@ class AgenticRecoveryOrchestrator:
                 if a not in memory.failed_actions
             ]
 
-            # B. REASON & C. PLAN (Advisory LLM Planner)
-            recommendation = self.planner.plan_recovery(ctx)
-
-            if recommendation is None:
-                # LLM failure or invalid schema fallback to ESCALATE
-                action = RecoveryAction.ESCALATE
-                reason = "LLM unavailable or generated malformed response. Escalating safely to operations."
-                confidence = 0.0
+            
+            # B. REASON & C. PLAN (Intelligent Recovery Engine)
+            if strategy_mode in ["INTELLIGENT", "DETERMINISTIC"]:
+                decision = self.intelligence_service.decide(payment, current_events, memory.retry_count)
+                
+                # If deterministic mode, override selected action with deterministic best
+                if strategy_mode == "DETERMINISTIC":
+                    try:
+                        action = RecoveryAction(decision.deterministic_best_action.action)
+                    except ValueError:
+                        action = RecoveryAction.STOP
+                    reason = f"DETERMINISTIC MODE: Chose {action.value}."
+                    confidence = 1.0
+                else:
+                    try:
+                        action = RecoveryAction(decision.selected_action)
+                    except ValueError:
+                        action = RecoveryAction.STOP
+                    reason = decision.selection_reason
+                    confidence = decision.llm_recommendation.confidence if decision.llm_recommendation else 1.0
             else:
-                action = recommendation.action
-                reason = recommendation.rationale
-                confidence = recommendation.confidence
+                # NAIVE MODE or legacy
+                recommendation = self.planner.plan_recovery(ctx)
+                if recommendation is None:
+                    action = RecoveryAction.ESCALATE
+                    reason = "LLM unavailable"
+                    confidence = 0.0
+                else:
+                    action = recommendation.action
+                    reason = recommendation.rationale
+                    confidence = recommendation.confidence
 
             last_agent_action = action.value
             last_agent_reason = reason
             last_confidence = confidence
+
 
             # Propose action tool record
             prop_tool = self.tools.propose_action(pid, action.value, reason, confidence)
