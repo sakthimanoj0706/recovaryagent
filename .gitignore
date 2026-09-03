@@ -46,3 +46,6 @@ Thumbs.db
 .idea/
 scratch/
 
+# Video files (kept local)
+*.mp4
+
