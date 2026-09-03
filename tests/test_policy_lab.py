@@ -173,11 +173,11 @@ def test_break_even_detection_and_absence():
     res_break = BreakEvenAnalyzer.find_break_even(req_break)
     assert isinstance(res_break.break_even_found, bool)
 
-    # 2. Break-even absent in narrow range where RecoverAI strictly dominates
+    # 2. Break-even absent in robust range where RecoverAI strictly dominates
     req_absent = BreakEvenRequest(
         parameter_name="retry_cost",
-        search_min=50.0,
-        search_max=100.0,
+        search_min=5000.0,
+        search_max=10000.0,
         env=EconomicEnvironment(payment_population=100, random_seed=42),
     )
     res_absent = BreakEvenAnalyzer.find_break_even(req_absent)

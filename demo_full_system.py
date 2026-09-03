@@ -226,7 +226,7 @@ def run_master_demo():
     print(f"  Double-Charges Prevented      : {b_comp.double_recoveries_prevented:,} (0 on RecoverAI)")
     print(f"  Unnecessary Actions Avoided   : -{b_comp.unnecessary_actions_reduction_pct:.1f}%")
     print(f"  Accounting Balance Conservation: Imbalance = Rs. {b_comp.recoverai.accounting_imbalance:.2f} (100% Exact Balance)")
-    print(f"  [PASS] Economic Impact Benchmark complete: Proven quantified business ROI.")
+    print(f"  [PASS] Economic Impact Benchmark complete: Observed Incremental Net Value.")
 
     # 7. Recovery Policy Lab & What-If Simulator (Step 12)
     print("\n" + "=" * 80)
@@ -634,7 +634,7 @@ def run_master_demo():
     print(f"      Safety Violations Prevented  : {proof.safety_violations_prevented:,}")
     print(f"      Unnecessary Actions Avoided  : {proof.unnecessary_actions_avoided:,}")
     print(f"      Proof Signature (SHA-256)    : {proof.proof_signature_sha256}")
-    print("  [PASS] Autonomous A/B Evaluation Complete. Exact Net Value Isolated & Verified.")
+    print("  [PASS] Controlled A/B Evaluation Complete. Synthetic Experiment Observed Incremental Net Value Verified.")
 
     print("\n" + "=" * 80)
     print("        ALL MASTER DEMO PHASES COMPLETED WITH 100% SUCCESS       ")
