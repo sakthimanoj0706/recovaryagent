@@ -33,7 +33,11 @@ async def security_headers(request: Request, call_next):
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
 
+from .routes import router
+from .control import router as control_router
+
 app.include_router(router, prefix="/api")
+app.include_router(control_router, prefix="/api")
 
 
 @app.get("/")

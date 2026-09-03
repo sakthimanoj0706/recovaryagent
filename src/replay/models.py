@@ -50,6 +50,9 @@ class EvidenceNodeType(str, Enum):
     INDEPENDENT_VERIFICATION = "INDEPENDENT_VERIFICATION"
     FINAL_FINANCIAL_STATE = "FINAL_FINANCIAL_STATE"
     ECONOMIC_OUTCOME = "ECONOMIC_OUTCOME"
+    OUTCOME = "OUTCOME"
+    CHALLENGER_EVALUATION = "CHALLENGER_EVALUATION"
+    PROMOTION = "PROMOTION"
     # Step 14 additions
     RAZORPAY_WEBHOOK = "RAZORPAY_WEBHOOK"
     RAZORPAY_API_RESPONSE = "RAZORPAY_API_RESPONSE"
@@ -216,6 +219,8 @@ class RecoveryDecisionReplay(BaseModel):
     final_financial_state: str
 
     # Financial & Provenance Proofs
+    expected_vs_actual: Optional[Dict[str, Any]] = None
+    decision_quality: Optional[Dict[str, Any]] = None
     financial_proof: FinancialProof
     provenance: DecisionProvenance
     evidence_graph: EvidenceGraph

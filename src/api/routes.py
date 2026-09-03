@@ -1343,6 +1343,7 @@ async def handle_razorpay_webhook(request: Request) -> Dict[str, Any]:
 # INTELLIGENT RECOVERY ENGINE (STEP 18)
 # ==========================================
 
+from api.auth import Role, require_role
 from pydantic import BaseModel
 from intelligence.service import IntelligentRecoveryService
 from state_engine.models import PaymentRecord, Event

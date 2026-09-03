@@ -17,6 +17,7 @@ import { PaymentDetailPanel } from './components/PaymentDetailPanel';
 import { BenchmarkPanel } from './components/BenchmarkPanel';
 import { PolicyLab } from './components/PolicyLab';
 import { DecisionReplay } from './components/DecisionReplay';
+import RecoveryControlPlane from './components/RecoveryControlPlane';
 import ProviderStatus from './components/ProviderStatus';
 import RazorpayTestConsole from './components/RazorpayTestConsole';
 
