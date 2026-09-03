@@ -15,7 +15,7 @@ class ChallengerEvaluationEngine:
         For simplicity, 'CHALLENGER' here uses the Intelligent strategy but with a tweaked parameter
         to simulate an offline Challenger policy variation.
         """
-        cfg = BenchmarkConfig(population_size=population_size, seed=seed)
+        cfg = BenchmarkConfig(payments=population_size, seed=seed)
         gen = SyntheticPopulationGenerator(seed=seed)
         pop = gen.generate_population(cfg)
         
@@ -60,17 +60,33 @@ class ChallengerEvaluationEngine:
         proof_str = f"EVAL_{seed}_{population_size}_" + json.dumps(results, sort_keys=True)
         h = hashlib.sha256(proof_str.encode()).hexdigest()
         
-        # We reuse the existing CounterfactualValueProof format
+        from experiment.models import StrategyResult, ABTestConfig
+        
+        strat_base = StrategyResult(
+            strategy_name="DETERMINISTIC",
+            total_recovered=results["DETERMINISTIC"]["net_value"],
+            total_withheld=0.0, total_escalated=0.0, total_pending=0.0, total_costs=0.0,
+            net_legitimate_value=results["DETERMINISTIC"]["net_value"],
+            false_recovery_claims=0, double_charge_violations=0, safety_violations=0
+        )
+        strat_chal = StrategyResult(
+            strategy_name="CHALLENGER",
+            total_recovered=results["CHALLENGER"]["net_value"],
+            total_withheld=0.0, total_escalated=0.0, total_pending=0.0, total_costs=0.0,
+            net_legitimate_value=results["CHALLENGER"]["net_value"],
+            false_recovery_claims=0, double_charge_violations=0, safety_violations=results["CHALLENGER"]["viol"]
+        )
         proof = CounterfactualValueProof(
-            baseline_net_value=results["DETERMINISTIC"]["net_value"],
-            experiment_net_value=results["CHALLENGER"]["net_value"],
-            incremental_value=results["CHALLENGER"]["net_value"] - results["DETERMINISTIC"]["net_value"],
-            recovery_rate_delta=0.0,
-            cost_efficiency_delta=0.0,
-            safety_invariant_breaches=results["CHALLENGER"]["viol"],
-            cryptographic_hash=h,
-            seed_used=seed,
-            population_size=population_size
+            config=ABTestConfig(population_size=population_size, random_seed=seed),
+            baseline_result=strat_base,
+            recoverai_result=strat_chal,
+            incremental_gross_recovery=0.0,
+            cost_savings=0.0,
+            incremental_net_value=results["CHALLENGER"]["net_value"] - results["DETERMINISTIC"]["net_value"],
+            safety_violations_prevented=0,
+            unnecessary_actions_avoided=0,
+            proof_signature_sha256=h,
+            cryptographic_hash=h
         )
         
         return {

@@ -35,9 +35,12 @@ async def security_headers(request: Request, call_next):
 
 from .routes import router
 from .control import router as control_router
+from .observability_routes import router as obs_router, proof_router
 
 app.include_router(router, prefix="/api")
 app.include_router(control_router, prefix="/api")
+app.include_router(obs_router, prefix="/api")
+app.include_router(proof_router, prefix="/api")
 
 
 @app.get("/")

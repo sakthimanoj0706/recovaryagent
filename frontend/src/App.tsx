@@ -18,6 +18,7 @@ import { BenchmarkPanel } from './components/BenchmarkPanel';
 import { PolicyLab } from './components/PolicyLab';
 import { DecisionReplay } from './components/DecisionReplay';
 import RecoveryControlPlane from './components/RecoveryControlPlane';
+import ProductionReadinessPanel from './components/ProductionReadinessPanel';
 import ProviderStatus from './components/ProviderStatus';
 import RazorpayTestConsole from './components/RazorpayTestConsole';
 
@@ -235,7 +236,11 @@ export const App: React.FC = () => {
         <ProviderStatus />
         <RazorpayTestConsole providerMode={providerMode} isVisible={true} />
 
+        {/* Recovery Control Plane & Outcome Learning (Step 19) */}
+        <RecoveryControlPlane />
 
+        {/* Production Readiness, Observability & Final Financial Proof (Step 20) */}
+        <ProductionReadinessPanel />
 
         {/* Payments Explorer Full Table */}
 

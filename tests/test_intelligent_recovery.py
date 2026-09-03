@@ -70,7 +70,21 @@ def _get_fitted_model():
     model.train(train_df, y_train)
     return model
 
+
+def _get_fitted_model():
+    from recovery.model import RecoveryProbabilityModel
+    import pandas as pd
+    model = RecoveryProbabilityModel(random_state=42)
+    train_df = pd.DataFrame([
+        {"amount": 10000.0, "method": "upi", "customer_segment": "high_value_repeat", "error_code": "BANK_DOWNTIME", "hardness": "soft"},
+        {"amount": 1000.0, "method": "card", "customer_segment": "new", "error_code": "CARD_BLOCKED", "hardness": "hard"}
+    ])
+    y_train = pd.Series([1, 0])
+    model.train(train_df, y_train)
+    return model
+
 def test_opportunity_scoring_and_generation():
+
 
 
 
