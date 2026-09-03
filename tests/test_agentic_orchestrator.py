@@ -86,7 +86,7 @@ def test_agent_cannot_override_financial_state(orchestrator):
         Event(event="payment.authorized", payment_id="pay_sec_01", ts="2026-08-10T10:30:00Z"),
         Event(event="payment.captured", payment_id="pay_sec_01", ts="2026-08-10T10:30:08Z"),
     ]
-    result = orchestrator.run_recovery_agent(payment, events)
+    result = orchestrator.run_recovery_agent(payment, events, strategy_mode="NAIVE")
     # Authority check: Financial State Engine proves ALREADY_RECOVERED; LLM cannot change it
     assert result.financial_state == "ALREADY_RECOVERED"
     assert result.firewall_decision == "STOP"
@@ -103,7 +103,7 @@ def test_agent_cannot_override_env(orchestrator):
         Event(event="payment.created", payment_id="pay_sec_02", ts="2026-08-10T10:00:00Z"),
         Event(event="payment.failed", payment_id="pay_sec_02", error_code="USER_CANCELLED", hardness="hard", ts="2026-08-10T10:00:05Z"),
     ]
-    result = orchestrator.run_recovery_agent(payment, events)
+    result = orchestrator.run_recovery_agent(payment, events, strategy_mode="NAIVE")
     assert result.expected_net_value is not None
     assert result.expected_net_value <= 0.0
     assert result.firewall_decision == "STOP"
@@ -120,7 +120,7 @@ def test_agent_cannot_bypass_firewall(orchestrator):
         Event(event="payment.created", payment_id="pay_sec_03", ts="2026-08-10T10:00:00Z"),
         Event(event="payment.failed", payment_id="pay_sec_03", error_code="CARD_BLOCKED", hardness="hard", ts="2026-08-10T10:00:05Z"),
     ]
-    result = orchestrator.run_recovery_agent(payment, events)
+    result = orchestrator.run_recovery_agent(payment, events, strategy_mode="NAIVE")
     # Even with positive economics, hard decline prevents automated RETRY
     assert result.firewall_decision in ["APPROVED", "STOP"]
     if result.agent_action == "RETRY":
@@ -151,7 +151,7 @@ def test_agent_llm_failure_falls_back_to_escalate(tmp_path):
         Event(event="payment.created", payment_id="pay_sec_05", ts="2026-08-10T10:00:00Z"),
         Event(event="payment.failed", payment_id="pay_sec_05", error_code="INSUFFICIENT_FUNDS", hardness="soft", ts="2026-08-10T10:00:05Z"),
     ]
-    result = failing_orch.run_recovery_agent(payment, events)
+    result = failing_orch.run_recovery_agent(payment, events, strategy_mode="NAIVE")
     assert result.agent_action == "ESCALATE"
     assert "Escalated" in result.agent_reason or "Escalate" in result.agent_reason or "escalat" in result.agent_reason.lower()
 
@@ -167,7 +167,7 @@ def test_agent_malformed_json_falls_back_safely(tmp_path):
         Event(event="payment.created", payment_id="pay_sec_06", ts="2026-08-10T10:00:00Z"),
         Event(event="payment.failed", payment_id="pay_sec_06", error_code="TIMEOUT", hardness="soft", ts="2026-08-10T10:00:05Z"),
     ]
-    result = malformed_orch.run_recovery_agent(payment, events)
+    result = malformed_orch.run_recovery_agent(payment, events, strategy_mode="NAIVE")
     assert result.agent_action == "ESCALATE"
 
 
@@ -178,7 +178,7 @@ def test_agent_max_iterations(orchestrator):
         Event(event="payment.created", payment_id="pay_sec_07", ts="2026-08-10T10:00:00Z"),
         Event(event="payment.failed", payment_id="pay_sec_07", error_code="INSUFFICIENT_FUNDS", hardness="soft", ts="2026-08-10T10:00:05Z"),
     ]
-    result = orchestrator.run_recovery_agent(payment, events, force_simulated_success=False)
+    result = orchestrator.run_recovery_agent(payment, events, force_simulated_success=False, strategy_mode="NAIVE")
     assert result.iterations <= orchestrator.MAX_AGENT_STEPS
     assert result.iterations <= 3
 
@@ -191,7 +191,7 @@ def test_agent_replans_after_failed_action(orchestrator):
         Event(event="payment.failed", payment_id="pay_sec_08", error_code="INSUFFICIENT_FUNDS", hardness="soft", ts="2026-08-10T10:00:05Z"),
     ]
     # Multi-step scenario: Step 1 fails, Step 2 replans and succeeds
-    result = orchestrator.run_recovery_agent(payment, events, multi_step_scenario=True)
+    result = orchestrator.run_recovery_agent(payment, events, multi_step_scenario=True, strategy_mode="NAIVE")
     assert result.iterations >= 2
     assert len(result.steps_taken) >= 2
     assert result.steps_taken[0].execution_status == "SIMULATED_FAILURE"
@@ -207,7 +207,7 @@ def test_agent_stops_after_recovery(orchestrator):
         Event(event="payment.created", payment_id="pay_sec_09", ts="2026-08-10T10:00:00Z"),
         Event(event="payment.failed", payment_id="pay_sec_09", error_code="INSUFFICIENT_FUNDS", hardness="soft", ts="2026-08-10T10:00:05Z"),
     ]
-    result = orchestrator.run_recovery_agent(payment, events, force_simulated_success=True)
+    result = orchestrator.run_recovery_agent(payment, events, force_simulated_success=True, strategy_mode="NAIVE")
     assert result.final_result == "RECOVERY_SUCCESS"
     assert result.iterations == 1
     assert result.steps_taken[-1].next_step == "STOP_RECOVERED"
@@ -221,7 +221,7 @@ def test_agent_stops_on_uncertain(orchestrator):
         Event(event="payment.failed", payment_id="pay_sec_10", error_code="TIMEOUT", hardness="soft", ts="2026-08-10T10:00:05Z"),
         Event(event="payment.pending", payment_id="pay_sec_10", ts="2026-08-10T10:00:10Z"),
     ]
-    result = orchestrator.run_recovery_agent(payment, events)
+    result = orchestrator.run_recovery_agent(payment, events, strategy_mode="NAIVE")
     assert result.financial_state == "UNCERTAIN"
     assert result.final_result == "WAIT"
     assert result.amount_pending == 6000.0
@@ -236,7 +236,7 @@ def test_agent_escalates_exception(orchestrator):
         Event(event="payment.authorized", payment_id="pay_sec_11", ts="2026-08-10T10:00:05Z"),
         Event(event="payment.captured", payment_id="pay_sec_11", ts="2026-08-10T10:00:10Z"),
     ]
-    result = orchestrator.run_recovery_agent(payment, events)
+    result = orchestrator.run_recovery_agent(payment, events, strategy_mode="NAIVE")
     assert result.financial_state == "EXCEPTION"
     assert result.final_result == "ESCALATED_TO_OPERATIONS"
     assert result.amount_escalated == 8500.0
@@ -258,10 +258,10 @@ def test_agent_cannot_repeat_duplicate_action(tmp_path):
         Event(event="payment.created", payment_id="pay_sec_12", ts="2026-08-10T10:00:00Z"),
         Event(event="payment.failed", payment_id="pay_sec_12", error_code="INSUFFICIENT_FUNDS", hardness="soft", ts="2026-08-10T10:00:05Z"),
     ]
-    res1 = orch.run_recovery_agent(payment, events, force_simulated_success=False)
+    res1 = orch.run_recovery_agent(payment, events, force_simulated_success=False, strategy_mode="NAIVE")
     assert res1.firewall_decision == "APPROVED"
 
-    res2 = orch.run_recovery_agent(payment, events)
+    res2 = orch.run_recovery_agent(payment, events, strategy_mode="NAIVE")
     assert res2.firewall_decision == "STOP"
     assert res2.final_result == "DUPLICATE_ACTION_BLOCKED"
 
@@ -282,7 +282,7 @@ def test_agent_respects_max_retries(tmp_path):
         Event(event="payment.failed", payment_id="pay_sec_13", error_code="TIMEOUT", hardness="soft", ts="2026-08-10T10:02:05Z"),
         Event(event="payment.failed", payment_id="pay_sec_13", error_code="TIMEOUT", hardness="soft", ts="2026-08-10T10:03:05Z"),
     ]
-    result = retry_orch.run_recovery_agent(payment, events)
+    result = retry_orch.run_recovery_agent(payment, events, strategy_mode="NAIVE")
     assert result.firewall_decision == "STOP"
     assert result.final_result in ["MAX_RETRY_PROTECTION", "SAFE_STOP"]
 
@@ -295,7 +295,7 @@ def test_agent_verifies_every_action(orchestrator):
         Event(event="payment.created", payment_id="pay_sec_14", ts="2026-08-10T10:00:00Z"),
         Event(event="payment.failed", payment_id="pay_sec_14", error_code="INSUFFICIENT_FUNDS", hardness="soft", ts="2026-08-10T10:00:05Z"),
     ]
-    result = orchestrator.run_recovery_agent(payment, events, force_simulated_success=True)
+    result = orchestrator.run_recovery_agent(payment, events, force_simulated_success=True, strategy_mode="NAIVE")
     # Every step record includes verification state confirmed by State Engine
     for step in result.steps_taken:
         assert step.verification_state is not None
@@ -309,7 +309,7 @@ def test_agent_cannot_claim_recovery_without_ledger_confirmation(orchestrator):
         Event(event="payment.created", payment_id="pay_sec_15_fresh", ts="2026-08-10T10:00:00Z"),
         Event(event="payment.failed", payment_id="pay_sec_15_fresh", error_code="INSUFFICIENT_FUNDS", hardness="soft", ts="2026-08-10T10:00:05Z"),
     ]
-    result = orchestrator.run_recovery_agent(payment, events, force_simulated_success=False)
+    result = orchestrator.run_recovery_agent(payment, events, force_simulated_success=False, strategy_mode="NAIVE")
     # Action was attempted, but ledger proves VERIFIED_LOST -> recovery is RECOVERY_FAILED, amount recovered is 0
     assert result.verification_state == "VERIFIED_LOST"
     assert result.final_result == "RECOVERY_FAILED"

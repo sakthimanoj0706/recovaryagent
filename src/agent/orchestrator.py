@@ -249,12 +249,21 @@ class AgenticRecoveryOrchestrator:
                         action = RecoveryAction.STOP
                     reason = decision.selection_reason
                     confidence = decision.llm_recommendation.confidence if decision.llm_recommendation else 1.0
+                
+                recommendation = RecoveryPlan(
+                    payment_id=pid,
+                    action=action,
+                    priority=RecoveryPriority.HIGH,
+                    reason=reason,
+                    confidence=confidence,
+                    expected_net_value=env if env is not None else 0.0
+                )
             else:
                 # NAIVE MODE or legacy
                 recommendation = self.planner.plan_recovery(ctx)
                 if recommendation is None:
                     action = RecoveryAction.ESCALATE
-                    reason = "LLM unavailable"
+                    reason = "LLM unavailable. Escalated."
                     confidence = 0.0
                 else:
                     action = recommendation.action
